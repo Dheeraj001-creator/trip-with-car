@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+@layer base {
+  *, *::before, *::after {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+  }
+
+  html {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    scroll-behavior: smooth;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: -0.025em;
+    font-weight: 800;
+  }
+}
+
+/* ========================================================
+   PREMIUM ROYAL GOLD BUTTON SUITE
+   - Rich metallic gradients (#F59E0B, #FBBF24, #FDE68A, #D97706)
+   - High-contrast bold typography with letter-spacing
+   - Radiant ambient glow and tactile hover lift
+   ======================================================== */
+.btn-gold {
+  background: linear-gradient(135deg, #D97706 0%, #F59E0B 30%, #FDE68A 65%, #F59E0B 100%);
+  background-size: 200% 200%;
+  color: #020617;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid rgba(254, 240, 138, 0.85);
+  box-shadow: 0 4px 16px -2px rgba(245, 158, 11, 0.45), inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.btn-gold:hover {
+  background-position: right center;
+  transform: translateY(-2px) scale(1.015);
+  box-shadow: 0 10px 28px -3px rgba(245, 158, 11, 0.6), 0 4px 12px -2px rgba(245, 158, 11, 0.3), inset 0 1px 2px 0 rgba(255, 255, 255, 0.8);
+  color: #000000;
+  border-color: #FEF08A;
+}
+
+.btn-gold:active {
+  transform: translateY(0px) scale(0.985);
+  box-shadow: 0 2px 8px 0 rgba(245, 158, 11, 0.35);
+}
+
+/* Specialized Top-Tier Font Styling for "Select" button - Compact & Fitted */
+.btn-select-book {
+  background: linear-gradient(135deg, #D97706 0%, #F59E0B 30%, #FDE68A 65%, #F59E0B 100%);
+  background-size: 200% 200%;
+  color: #020617;
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-weight: 900;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid rgba(254, 240, 138, 0.9);
+  box-shadow: 0 2px 10px -2px rgba(245, 158, 11, 0.42), inset 0 1px 1px 0 rgba(255, 255, 255, 0.7);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 0.65rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-select-book:hover {
+  background-position: right center;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 10px 28px -2px rgba(245, 158, 11, 0.65), inset 0 1px 2px 0 rgba(255, 255, 255, 0.9);
+  color: #000000;
+  border-color: #FEF08A;
+}
+
+.btn-select-book:active {
+  transform: translateY(0px) scale(0.98);
+}
+
+/* Secondary Gold Outline Button */
+.btn-gold-outline {
+  background: transparent;
+  color: #F59E0B;
+  border: 2px solid #F59E0B;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.btn-gold-outline:hover {
+  background: #F59E0B;
+  color: #020617;
+  box-shadow: 0 6px 22px 0 rgba(245, 158, 11, 0.45);
+  transform: translateY(-2px);
+  border-color: #FBBF24;
+}
+
+.btn-gold-outline:active {
+  transform: translateY(0px) scale(0.985);
+}
+
+/* Gold Badge */
+.badge-gold {
+  background: rgba(245, 158, 11, 0.15);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Custom Ultra-Crisp Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #F59E0B;
+}
+
+/* Car Loading Animations */
+@keyframes carBounce {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-2.5px) rotate(0.4deg);
+  }
+}
+
+@keyframes wheelSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes roadTrack {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes carWind {
+  0% {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateX(-60px);
+    opacity: 0;
+  }
+}
+
+@keyframes progressIndeterminate {
+  0% {
+    transform: translateX(-100%);
+    width: 40%;
+  }
+  50% {
+    transform: translateX(50%);
+    width: 70%;
+  }
+  100% {
+    transform: translateX(200%);
+    width: 30%;
+  }
+}
+
+.animate-car-bounce {
+  animation: carBounce 0.4s ease-in-out infinite;
+}
+
+.animate-wheel-spin {
+  animation: wheelSpin 0.35s linear infinite;
+}
+
+.animate-road-track {
+  animation: roadTrack 0.45s linear infinite;
+}
+
+.animate-car-wind {
+  animation: carWind 0.7s ease-in-out infinite;
+}
+
+.animate-progress-indeterminate {
+  animation: progressIndeterminate 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}

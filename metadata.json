@@ -1,0 +1,6 @@
+{
+  "name": "TripWithCar - Professional Outstation, Airport & Intercity Cabs",
+  "description": "Executive intercity, outstation and airport chauffeur car rental services across Varanasi, Ayodhya, Prayagraj, Lucknow and Pan-India with transparent billing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
