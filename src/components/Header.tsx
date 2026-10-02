@@ -7,8 +7,8 @@ interface HeaderProps {
   onSelectTab: (tabId: string) => void;
   onOpenTrackBooking: () => void;
   onOpenDriverPartner: () => void;
-  language: 'en' | 'hi';
-  onToggleLanguage: () => void;
+  language?: 'en' | 'hi';
+  onToggleLanguage?: () => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
 }
@@ -18,8 +18,6 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectTab,
   onOpenTrackBooking,
   onOpenDriverPartner,
-  language,
-  onToggleLanguage,
   theme,
   onToggleTheme,
 }) => {
@@ -27,9 +25,9 @@ export const Header: React.FC<HeaderProps> = ({
   const isLight = theme === 'light';
 
   const navItems = [
-    { id: 'booking', label: language === 'en' ? 'Book Cab' : 'कैब बुकिंग' },
-    { id: 'routes', label: language === 'en' ? 'Popular Routes' : 'प्रमुख रूट्स' },
-    { id: 'fleet', label: language === 'en' ? 'Our Cars' : 'हमारी गाड़ियां' },
+    { id: 'booking', label: 'Book Cab' },
+    { id: 'routes', label: 'Popular Routes' },
+    { id: 'fleet', label: 'Our Cars' },
   ];
 
   return (
@@ -48,69 +46,29 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5 font-bold text-[11px] sm:text-xs">
               <ShieldCheck className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span>{language === 'en' ? 'Verified Commercial Chauffeurs & Clean Cars' : 'सत्यापित सारथी एवं स्वच्छ फ्लीट'}</span>
+              <span>Verified Commercial Chauffeurs &amp; Clean Fleet</span>
             </span>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 ml-auto">
-            {/* Black / White Theme Switcher (ONLY HERE AT TOP) */}
+            {/* Theme Logo / Icon Button (ONLY LOGO) */}
             <button
               type="button"
               onClick={onToggleTheme}
-              className={`flex items-center gap-1.5 text-[11px] sm:text-xs font-black px-2.5 sm:px-3 py-1.5 rounded-xl border transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+              className={`p-2 rounded-xl border transition-all cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center ${
                 isLight
-                  ? 'bg-white border-amber-300/80 text-slate-900 hover:bg-amber-50 shadow-xs'
-                  : 'bg-[#0F172A] border-amber-400/40 text-amber-400 hover:bg-slate-800 hover:border-amber-400 shadow-xs'
+                  ? 'bg-white border-slate-300 text-amber-600 hover:bg-amber-50 shadow-xs'
+                  : 'bg-[#0F172A] border-slate-700 text-amber-400 hover:bg-slate-800 shadow-xs'
               }`}
-              title={isLight ? 'Switch to Dark / Black Theme' : 'Switch to Light / White Theme'}
+              title={isLight ? 'Switch to Dark Theme' : 'Switch to Light Theme'}
+              aria-label="Toggle Theme"
             >
               {isLight ? (
-                <>
-                  <Sun className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                  <span>White Theme</span>
-                </>
+                <Sun className="w-4 h-4 text-amber-500 fill-amber-500" />
               ) : (
-                <>
-                  <Moon className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                  <span>Black Theme</span>
-                </>
+                <Moon className="w-4 h-4 text-amber-400 fill-amber-400" />
               )}
             </button>
-
-            {/* Language toggle */}
-            <button
-              type="button"
-              onClick={onToggleLanguage}
-              className={`text-[11px] sm:text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl border transition-all cursor-pointer hover:scale-105 active:scale-95 ${
-                isLight
-                  ? 'bg-white border-slate-300 text-slate-800 hover:bg-slate-100'
-                  : 'bg-[#0F172A] border-slate-700 text-slate-200 hover:bg-slate-800 hover:border-slate-500'
-              }`}
-              title="Change Language"
-            >
-              {language === 'en' ? 'हिंदी' : 'English'}
-            </button>
-
-            {/* Helpline (Kept at top) */}
-            <a
-              href={`tel:${COMPANY_PHONE.replace(/\s+/g, '')}`}
-              className="flex items-center gap-1 font-black text-amber-500 hover:text-amber-400 transition-colors text-xs"
-            >
-              <Phone className="w-3.5 h-3.5" />
-              <span className="tracking-wide font-mono hidden xs:inline">{COMPANY_PHONE}</span>
-            </a>
-
-            {/* WhatsApp Button (Prominent at top, says "WhatsApp") */}
-            <a
-              href={`https://wa.me/${COMPANY_WHATSAPP}?text=Hello%20TripWithCar%2C%20I%20would%20like%20to%20inquire%20about%20a%20chauffeur%20booking`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] sm:text-xs shadow-xs transition-all hover:scale-105 active:scale-95"
-              title="WhatsApp Booking & Support"
-            >
-              <MessageSquare className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>WhatsApp</span>
-            </a>
           </div>
         </div>
       </div>
@@ -143,17 +101,17 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {/* Desktop Nav Items */}
-        <nav className="hidden lg:flex items-center gap-2 text-xs font-bold tracking-wide">
+        <nav className="hidden lg:flex items-center gap-1.5 text-xs font-semibold">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => onSelectTab(item.id)}
-              className={`px-4 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl transition-colors duration-150 cursor-pointer select-none whitespace-nowrap ${
                 activeTab === item.id
-                  ? 'btn-gold shadow-md'
+                  ? 'bg-amber-500 border border-amber-400 text-slate-950 font-bold shadow-sm'
                   : isLight
-                    ? 'text-slate-700 hover:text-slate-950 hover:bg-slate-100 hover:-translate-y-0.5'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/80 hover:-translate-y-0.5'
+                    ? 'border border-transparent text-slate-700 hover:text-slate-950 hover:bg-slate-100'
+                    : 'border border-transparent text-slate-300 hover:text-white hover:bg-slate-800/80'
               }`}
             >
               {item.label}
@@ -164,18 +122,6 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Action Controls with Gold Theme */}
         <div className="hidden sm:flex items-center gap-3">
           <button
-            onClick={onOpenTrackBooking}
-            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer hover:-translate-y-0.5 ${
-              isLight
-                ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-800 shadow-xs'
-                : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200 shadow-xs'
-            }`}
-          >
-            <Search className="w-3.5 h-3.5 text-amber-500" />
-            <span>{language === 'en' ? 'Track Reservation' : 'बुकिंग स्टेटस'}</span>
-          </button>
-
-          <button
             onClick={onOpenDriverPartner}
             className={`hidden xl:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer hover:-translate-y-0.5 ${
               isLight
@@ -184,28 +130,28 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <UserCheck className="w-3.5 h-3.5 text-amber-500" />
-            <span>{language === 'en' ? 'Attach Taxi' : 'गाड़ी जोड़ें'}</span>
+            <span>Attach Taxi</span>
           </button>
 
-          {/* LUXURY GOLD HELPLINE BUTTON */}
+          {/* CALL PHONE NUMBER BUTTON */}
           <a
-            href={`tel:${COMPANY_PHONE.replace(/\s+/g, '')}`}
-            className="btn-gold flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs"
+            href="tel:6387922889"
+            className="btn-gold flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold"
           >
             <Phone className="w-3.5 h-3.5 stroke-[3]" />
-            <span>{language === 'en' ? '24/7 Helpline' : 'हेल्पलाइन'}</span>
+            <span>6387922889</span>
           </a>
         </div>
 
         {/* Mobile menu toggle */}
         <div className="flex sm:hidden items-center gap-2">
-          <button
-            onClick={onOpenTrackBooking}
-            className={`p-2 rounded-lg ${isLight ? 'text-slate-800' : 'text-slate-200'}`}
-            title="Track Reservation"
+          <a
+            href="tel:6387922889"
+            className="btn-gold p-2 rounded-xl flex items-center justify-center text-xs"
+            title="Call 6387922889"
           >
-            <Search className="w-5 h-5 text-amber-500" />
-          </button>
+            <Phone className="w-4 h-4 stroke-[2.8]" />
+          </a>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className={`p-2 rounded-lg ${isLight ? 'text-slate-800' : 'text-slate-200'}`}
@@ -229,9 +175,9 @@ export const Header: React.FC<HeaderProps> = ({
                   onSelectTab(item.id);
                   setMobileMenuOpen(false);
                 }}
-                className={`text-left px-4 py-3 rounded-xl border text-xs font-black transition-all ${
+                className={`text-left px-4 py-2.5 rounded-xl border text-xs font-semibold transition-colors ${
                   activeTab === item.id
-                    ? 'btn-gold shadow-md'
+                    ? 'bg-amber-500 border-amber-400 text-slate-950 font-bold shadow-sm'
                     : isLight
                       ? 'bg-slate-50 border-slate-200 text-slate-800'
                       : 'bg-slate-900 border-slate-800 text-slate-200'
@@ -244,23 +190,12 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="pt-2 border-t flex flex-col gap-2.5">
             <a
-              href={`tel:${COMPANY_PHONE.replace(/\s+/g, '')}`}
-              className="btn-gold w-full py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs"
+              href="tel:6387922889"
+              className="btn-gold w-full py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs font-bold"
             >
               <Phone className="w-4 h-4 stroke-[3]" />
-              <span>Call Helpline: {COMPANY_PHONE}</span>
+              <span>Call: 6387922889</span>
             </a>
-
-            <button
-              onClick={() => {
-                onOpenTrackBooking();
-                setMobileMenuOpen(false);
-              }}
-              className="w-full py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-xs font-bold text-slate-200 flex items-center justify-center gap-2"
-            >
-              <Search className="w-3.5 h-3.5 text-amber-500" />
-              <span>Track Booking / PNR</span>
-            </button>
           </div>
         </div>
       )}

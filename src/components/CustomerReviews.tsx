@@ -16,10 +16,10 @@ export const CustomerReviews: React.FC<CustomerReviewsProps> = ({ language, them
     }`}>
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         <div>
-          <span className="text-xs font-black text-blue-600 uppercase tracking-widest block mb-1">
+          <span className="text-xs font-bold text-amber-500 uppercase tracking-widest block mb-1">
             {language === 'en' ? 'Verified Trip Feedback' : 'यात्रियों की समीक्षाएं'}
           </span>
-          <h2 className={`text-2xl sm:text-3xl font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+          <h2 className={`text-2xl sm:text-3xl font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
             {language === 'en' ? 'Client Testimonials' : 'यात्रियों के अनुभव'}
           </h2>
         </div>
@@ -30,8 +30,8 @@ export const CustomerReviews: React.FC<CustomerReviewsProps> = ({ language, them
               <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
             ))}
           </div>
-          <span className={`font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>4.9 / 5.0</span>
-          <span>(3,800+ Verified Journeys)</span>
+          <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>0.0 / 5.0</span>
+          <span>(0 Verified Reviews)</span>
         </div>
       </div>
 

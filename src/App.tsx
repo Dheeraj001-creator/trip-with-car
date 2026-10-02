@@ -19,10 +19,12 @@ import { PopularRoutes } from './components/PopularRoutes';
 import { FleetSection } from './components/FleetSection';
 import { CustomerReviews } from './components/CustomerReviews';
 import { WhyChooseUs } from './components/WhyChooseUs';
+import { StatsCounterSection } from './components/StatsCounterSection';
 import { Footer } from './components/Footer';
 import { BookingConfirmationModal } from './components/BookingConfirmationModal';
 import { TrackBookingModal } from './components/TrackBookingModal';
 import { DriverPartnerModal } from './components/DriverPartnerModal';
+import { DestinationSlider } from './components/DestinationSlider';
 import { Booking, Vehicle } from './types/cab';
 import { POPULAR_ROUTES } from './data/cabsData';
 
@@ -126,64 +128,37 @@ export default function App() {
                     setActiveSection(tab.id);
                     setViewAllMode(false);
                   }}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors cursor-pointer select-none whitespace-nowrap ${
                     isActive && !viewAllMode
-                      ? 'btn-gold shadow-md'
+                      ? 'bg-amber-500 border border-amber-400 text-slate-950 font-bold shadow-sm'
                       : isLight
-                        ? 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                        ? 'border border-transparent text-slate-700 hover:text-slate-950 hover:bg-slate-100'
+                        : 'border border-transparent text-slate-300 hover:text-white hover:bg-slate-800'
                   }`}
                 >
-                  <Icon className="w-4 h-4 stroke-[2.5]" />
+                  <Icon className="w-4 h-4 stroke-[2.2]" />
                   <span>{tab.label}</span>
                 </button>
               );
             })}
-          </div>
-
-          {/* Quick Controls: Track PNR and Mode (No duplicate theme switch) */}
-          <div className="flex items-center gap-2 ml-auto">
-            <button
-              type="button"
-              onClick={() => setShowTrackModal(true)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                isLight
-                  ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800'
-                  : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200'
-              }`}
-            >
-              <Search className="w-3.5 h-3.5 text-amber-500" />
-              <span>Track PNR</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setViewAllMode(!viewAllMode)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                viewAllMode
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-500 font-bold'
-                  : isLight
-                    ? 'bg-white border-slate-300 text-slate-600 hover:text-slate-900'
-                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
-              }`}
-              title="Toggle between single tab focus and full continuous page"
-            >
-              {viewAllMode ? 'Tab View' : 'All Sections'}
-            </button>
           </div>
         </div>
 
         {/* SECTION 1: BOOKING ENGINE */}
         {(activeSection === 'booking' || viewAllMode) && (
           <section className="mb-14 sm:mb-16">
-            <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-10">
-              <h1 className={`text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>
-                {language === 'en' ? 'Book Your Chauffeur Cab' : 'अपनी कैब तुरंत बुक करें'}
+            {/* Top Destination Image Slide Carousel */}
+            <DestinationSlider
+              onSelectRoute={handleSelectRoute}
+              theme={theme}
+            />
+
+            <div className="text-center max-w-2xl mx-auto mb-6 sm:mb-8">
+              <h1 className={`text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>
+                Book Your Chauffeur Cab
               </h1>
-              <p className={`text-xs sm:text-sm mt-2 max-w-md mx-auto ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                {language === 'en'
-                  ? 'Tolls, Fuel & State Taxes Included · Pay Post-Ride'
-                  : 'टोल, ईंधन एवं टैक्स शामिल · यात्रा उपरांत भुगतान'}
+              <p className={`text-xs sm:text-sm mt-1.5 max-w-md mx-auto ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                Tolls, Fuel &amp; State Taxes Included · Pay Post-Ride
               </p>
             </div>
 
@@ -233,6 +208,11 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* PLATFORM MILESTONES & LIVE STATS COUNTER STRIP */}
+        <div className="mt-10 sm:mt-14 pt-8 border-t border-slate-200 dark:border-slate-800">
+          <StatsCounterSection language={language} theme={theme} />
+        </div>
       </main>
 
       {/* Modals */}

@@ -1,9 +1,9 @@
 import { Vehicle, PopularRoute, TourPackage, Review, FaqItem } from '../types/cab';
 
 export const COMPANY_NAME = "TripWithCar";
-export const COMPANY_PHONE = "+91 98380 91234";
-export const COMPANY_PHONE_RAW = "919838091234";
-export const COMPANY_WHATSAPP = "919838091234";
+export const COMPANY_PHONE = "6387922889";
+export const COMPANY_PHONE_RAW = "6387922889";
+export const COMPANY_WHATSAPP = "6387922889";
 export const COMPANY_EMAIL = "bookings@tripwithcar.com";
 export const OFFICE_ADDRESS = "Transport Nagar / Babatpur Airport Expressway, Varanasi, Uttar Pradesh 221002";
 
