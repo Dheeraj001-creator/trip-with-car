@@ -63,7 +63,7 @@ export const FleetSection: React.FC<FleetSectionProps> = ({
                 <img
                   src={car.imageUrl}
                   alt={car.name}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/25" />
 

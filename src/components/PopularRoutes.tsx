@@ -10,6 +10,7 @@ interface PopularRoutesProps {
 
 export const PopularRoutes: React.FC<PopularRoutesProps> = ({
   onSelectRoute,
+  language = 'en',
   theme,
 }) => {
   const [activeFilter, setActiveFilter] = useState<string>('all');
@@ -145,7 +146,8 @@ export const PopularRoutes: React.FC<PopularRoutesProps> = ({
         {filteredRoutes.map((route) => (
           <div
             key={route.id}
-            className={`border rounded-2xl p-5 sm:p-5.5 transition-all duration-200 flex flex-col justify-between shadow-md hover:shadow-xl hover:-translate-y-1 group ${
+            onClick={() => onSelectRoute(route.from, route.to)}
+            className={`border rounded-2xl p-5 sm:p-5.5 transition-all duration-200 flex flex-col justify-between shadow-md hover:shadow-xl hover:-translate-y-1 group cursor-pointer ${
               isLight
                 ? 'bg-white border-slate-200 hover:border-amber-400 text-slate-900'
                 : 'bg-[#0F172A] border-slate-800 hover:border-amber-400/70 text-white'
@@ -252,10 +254,13 @@ export const PopularRoutes: React.FC<PopularRoutesProps> = ({
             <div className="pt-2">
               <button
                 type="button"
-                onClick={() => onSelectRoute(route.from, route.to)}
-                className="w-full btn-gold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer font-bold tracking-wide"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectRoute(route.from, route.to);
+                }}
+                className="w-full btn-gold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer font-bold tracking-wide transition-all"
               >
-                <span>Book This Route</span>
+                <span>{language === 'en' ? 'View All Cars & Book' : 'सभी गाड़ियां देखें और बुक करें'}</span>
                 <ArrowRight className="w-3.5 h-3.5 stroke-[2.8]" />
               </button>
             </div>

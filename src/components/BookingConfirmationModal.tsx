@@ -284,7 +284,7 @@ export const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> =
               href={whatsappUrl}
               target="_blank"
               rel="noreferrer"
-              className="flex-1 py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
+              className="flex-1 py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
             >
               <MessageSquare className="w-4 h-4 stroke-[2.5]" />
               <span>Share Voucher on WhatsApp</span>

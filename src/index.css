@@ -49,14 +49,14 @@
 
 .btn-gold:hover {
   background-position: right center;
-  transform: translateY(-2px) scale(1.015);
-  box-shadow: 0 10px 28px -3px rgba(245, 158, 11, 0.6), 0 4px 12px -2px rgba(245, 158, 11, 0.3), inset 0 1px 2px 0 rgba(255, 255, 255, 0.8);
+  transform: none;
+  box-shadow: 0 6px 20px -2px rgba(245, 158, 11, 0.55), inset 0 1px 2px 0 rgba(255, 255, 255, 0.8);
   color: #000000;
   border-color: #FEF08A;
 }
 
 .btn-gold:active {
-  transform: translateY(0px) scale(0.985);
+  transform: none;
   box-shadow: 0 2px 8px 0 rgba(245, 158, 11, 0.35);
 }
 
@@ -85,14 +85,46 @@
 
 .btn-select-book:hover {
   background-position: right center;
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 10px 28px -2px rgba(245, 158, 11, 0.65), inset 0 1px 2px 0 rgba(255, 255, 255, 0.9);
+  transform: none;
+  box-shadow: 0 6px 18px -2px rgba(245, 158, 11, 0.55), inset 0 1px 2px 0 rgba(255, 255, 255, 0.9);
   color: #000000;
   border-color: #FEF08A;
 }
 
 .btn-select-book:active {
-  transform: translateY(0px) scale(0.98);
+  transform: none;
+}
+
+/* Segmented Tab Active - Rich Royal Gold without size jumps or uppercase distortion */
+.tab-gold-active {
+  background: linear-gradient(135deg, #D97706 0%, #F59E0B 35%, #FBBF24 70%, #F59E0B 100%);
+  color: #020617;
+  font-weight: 700;
+  border: 1px solid rgba(254, 240, 138, 0.95);
+  box-shadow: 0 2px 8px -1px rgba(245, 158, 11, 0.45);
+}
+
+/* Stable View More/Fewer Button - Zero distortion, fixed dimensions */
+.btn-view-toggle {
+  background: linear-gradient(135deg, #D97706 0%, #F59E0B 35%, #FBBF24 70%, #F59E0B 100%);
+  color: #020617;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  border: 1px solid rgba(254, 240, 138, 0.95);
+  box-shadow: 0 2px 8px -1px rgba(245, 158, 11, 0.4);
+  box-sizing: border-box;
+  transform: none !important;
+}
+
+.btn-view-toggle:hover {
+  box-shadow: 0 4px 12px 0 rgba(245, 158, 11, 0.45);
+  filter: brightness(1.04);
+  transform: none !important;
+}
+
+.btn-view-toggle:active {
+  filter: brightness(0.96);
+  transform: none !important;
 }
 
 /* Secondary Gold Outline Button */
@@ -116,7 +148,7 @@
 }
 
 .btn-gold-outline:active {
-  transform: translateY(0px) scale(0.985);
+  transform: none;
 }
 
 /* Gold Badge */

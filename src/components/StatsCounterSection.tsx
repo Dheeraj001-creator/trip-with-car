@@ -35,7 +35,7 @@ export const StatsCounterSection: React.FC<StatsCounterSectionProps> = ({
     },
     {
       id: 'drivers',
-      value: '0',
+      value: '6',
       title: language === 'en' ? 'Active Drivers' : 'सक्रिय कैब ड्राइवर्स',
       subtitle: language === 'en' ? 'Yellow-plate vetted chauffeurs' : 'प्रमाणित कमर्शियल सारथी',
       icon: UserCheck,

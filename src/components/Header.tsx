@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Phone, MessageSquare, ShieldCheck, MapPin, Search, Menu, X, Car, UserCheck, Sun, Moon, Sparkles } from 'lucide-react';
+import { Phone, MessageSquare, ShieldCheck, MapPin, Search, Menu, X, Car, UserCheck, Sun, Moon, Sparkles, Lock } from 'lucide-react';
 import { COMPANY_PHONE, COMPANY_WHATSAPP } from '../data/cabsData';
 
 interface HeaderProps {
@@ -55,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onToggleTheme}
-              className={`p-2 rounded-xl border transition-all cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center ${
+              className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center ${
                 isLight
                   ? 'bg-white border-slate-300 text-amber-600 hover:bg-amber-50 shadow-xs'
                   : 'bg-[#0F172A] border-slate-700 text-amber-400 hover:bg-slate-800 shadow-xs'
@@ -80,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={() => onSelectTab('booking')}
           className="flex items-center gap-3.5 text-left group cursor-pointer"
         >
-          <div className="w-11 h-11 rounded-2xl flex items-center justify-center transition-all bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-500 text-slate-950 shadow-md shadow-amber-500/35 group-hover:scale-108 group-hover:rotate-2">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center transition-all bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-500 text-slate-950 shadow-md shadow-amber-500/35">
             <Car className="w-6 h-6 stroke-[2.5]" />
           </div>
           <div>
@@ -121,43 +121,49 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Controls with Gold Theme */}
         <div className="hidden sm:flex items-center gap-3">
+          {/* Add Taxi Button with subtle locked style and crystal clear Soon badge */}
           <button
             onClick={onOpenDriverPartner}
-            className={`hidden xl:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer hover:-translate-y-0.5 ${
+            className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               isLight
-                ? 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 bg-slate-50/80'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800 bg-slate-900/60'
             }`}
+            title="Add Taxi / Partner Attachment (Coming Soon)"
           >
-            <UserCheck className="w-3.5 h-3.5 text-amber-500" />
-            <span>Attach Taxi</span>
+            <div className="flex items-center gap-1.5 opacity-70 filter blur-[0.3px]">
+              <UserCheck className="w-3.5 h-3.5 text-amber-500" />
+              <span>Add Taxi</span>
+            </div>
+            <span className="filter-none opacity-100 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-black shadow-xs ml-0.5 tracking-wide">
+              <Lock className="w-2.5 h-2.5 stroke-[3]" />
+              <span>Soon</span>
+            </span>
           </button>
 
-          {/* CALL PHONE NUMBER BUTTON */}
+          {/* CONTACT BUTTON (Phone number hidden as requested, showing Contact Us) */}
           <a
             href="tel:6387922889"
-            className="btn-gold flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold"
+            className="btn-gold flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
+            title="Contact Us: 6387922889"
           >
-            <Phone className="w-3.5 h-3.5 stroke-[3]" />
-            <span>6387922889</span>
+            <Phone className="w-3.5 h-3.5 stroke-[2.8]" />
+            <span>Contact Us</span>
           </a>
         </div>
 
-        {/* Mobile menu toggle */}
-        <div className="flex sm:hidden items-center gap-2">
-          <a
-            href="tel:6387922889"
-            className="btn-gold p-2 rounded-xl flex items-center justify-center text-xs"
-            title="Call 6387922889"
-          >
-            <Phone className="w-4 h-4 stroke-[2.8]" />
-          </a>
+        {/* Mobile menu toggle (Contact Us is ONLY inside the menu when clicked) */}
+        <div className="flex sm:hidden items-center">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className={`p-2 rounded-lg ${isLight ? 'text-slate-800' : 'text-slate-200'}`}
-            aria-label="Toggle Navigation"
+            className={`p-2 rounded-xl border transition-colors ${
+              isLight
+                ? 'bg-slate-100 border-slate-200 text-slate-800 hover:bg-slate-200'
+                : 'bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800'
+            }`}
+            aria-label="Toggle Navigation Menu"
           >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {mobileMenuOpen ? <X className="w-6 h-6 text-amber-500" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
       </div>
@@ -188,13 +194,36 @@ export const Header: React.FC<HeaderProps> = ({
             ))}
           </div>
 
+          {/* Add Taxi in Mobile Menu with Clear Lock Badge */}
+          <div className="pt-1">
+            <button
+              onClick={() => {
+                onOpenDriverPartner();
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full py-2.5 px-3.5 rounded-xl border flex items-center justify-between text-xs font-bold ${
+                isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-900 border-slate-800 text-slate-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 opacity-75 filter blur-[0.3px]">
+                <UserCheck className="w-4 h-4 text-amber-500" />
+                <span>Add Taxi / Attach Cab</span>
+              </div>
+              <span className="filter-none opacity-100 flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-black shadow-xs tracking-wide">
+                <Lock className="w-2.5 h-2.5 stroke-[3]" />
+                <span>Soon</span>
+              </span>
+            </button>
+          </div>
+
+          {/* Mobile Contact Button without raw phone number digits */}
           <div className="pt-2 border-t flex flex-col gap-2.5">
             <a
               href="tel:6387922889"
               className="btn-gold w-full py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs font-bold"
             >
-              <Phone className="w-4 h-4 stroke-[3]" />
-              <span>Call: 6387922889</span>
+              <Phone className="w-4 h-4 stroke-[2.8]" />
+              <span>Contact Us</span>
             </a>
           </div>
         </div>

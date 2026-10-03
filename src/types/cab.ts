@@ -1,6 +1,6 @@
 export type TripType = 'oneway' | 'roundtrip' | 'local' | 'airport';
 
-export type VehicleCategory = 'hatchback' | 'sedan' | 'suv' | 'crysta' | 'tempo' | 'luxury_suv' | 'force_tourist';
+export type VehicleCategory = 'hatchback' | 'sedan' | 'suv' | 'crysta' | 'tempo' | 'luxury_suv' | 'force_tourist' | 'bolero' | 'bus' | 'honda';
 
 export interface Vehicle {
   id: string;

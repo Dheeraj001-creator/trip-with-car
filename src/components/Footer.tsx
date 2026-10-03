@@ -1,5 +1,5 @@
 import React from 'react';
-import { Phone, Mail, MapPin, ShieldCheck, Car, ArrowUp } from 'lucide-react';
+import { Phone, Mail, MapPin, ShieldCheck, Car, ArrowUp, Lock } from 'lucide-react';
 import { COMPANY_PHONE, COMPANY_EMAIL, OFFICE_ADDRESS, COMPANY_NAME } from '../data/cabsData';
 
 interface FooterProps {
@@ -119,9 +119,13 @@ export const Footer: React.FC<FooterProps> = ({
                 <button
                   type="button"
                   onClick={onOpenDriverPartner}
-                  className="hover:text-blue-600 transition-colors cursor-pointer text-left font-medium"
+                  className="hover:text-amber-500 transition-colors cursor-pointer text-left font-medium inline-flex items-center gap-1.5 opacity-70 filter blur-[0.4px] hover:blur-none hover:opacity-100"
                 >
-                  Attach Taxi (Partner)
+                  <span>Attach Taxi (Partner)</span>
+                  <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-500/15 text-amber-500 text-[9px] font-bold border border-amber-500/30">
+                    <Lock className="w-2 h-2 stroke-[2.8]" />
+                    <span>Soon</span>
+                  </span>
                 </button>
               </li>
             </ul>

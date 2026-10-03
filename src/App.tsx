@@ -11,7 +11,8 @@ import {
   Star, 
   Car, 
   Navigation, 
-  Search
+  Search,
+  Sparkles
 } from 'lucide-react';
 import { Header } from './components/Header';
 import { BookingForm } from './components/BookingForm';
@@ -24,8 +25,10 @@ import { Footer } from './components/Footer';
 import { BookingConfirmationModal } from './components/BookingConfirmationModal';
 import { TrackBookingModal } from './components/TrackBookingModal';
 import { DriverPartnerModal } from './components/DriverPartnerModal';
+import { LockedFeatureModal } from './components/LockedFeatureModal';
 import { DestinationSlider } from './components/DestinationSlider';
-import { Booking, Vehicle } from './types/cab';
+import { CabResultsPage } from './components/CabResultsPage';
+import { Booking, Vehicle, TripType } from './types/cab';
 import { POPULAR_ROUTES } from './data/cabsData';
 
 export default function App() {
@@ -52,10 +55,12 @@ export default function App() {
   const [viewAllMode, setViewAllMode] = useState<boolean>(false);
 
   // Quick booking state
-  const [tripType, setTripType] = useState<'oneway' | 'roundtrip' | 'local' | 'airport'>('oneway');
-  const [fromCity, setFromCity] = useState('Varanasi');
-  const [toCity, setToCity] = useState('Ayodhya');
+  const [tripType, setTripType] = useState<TripType>('oneway');
+  const [fromCity, setFromCity] = useState('');
+  const [toCity, setToCity] = useState('');
+  const [dropAddress, setDropAddress] = useState('');
   const [vehicleCat, setVehicleCat] = useState('sedan');
+  const [autoSearch, setAutoSearch] = useState(false);
   const [formKey, setFormKey] = useState(0);
 
   // Modals
@@ -63,20 +68,29 @@ export default function App() {
   const [showTrackModal, setShowTrackModal] = useState(false);
   const [showDriverModal, setShowDriverModal] = useState(false);
 
+  // Direct route selection to dedicated Results & Price Page
   const handleSelectRoute = (from: string, to: string) => {
     setFromCity(from);
     setToCity(to);
     setTripType('oneway');
-    setFormKey(prev => prev + 1);
-    setActiveSection('booking');
-    window.scrollTo({ top: 120, behavior: 'smooth' });
+    setActiveSection('results');
+    window.scrollTo({ top: 100, behavior: 'smooth' });
+  };
+
+  // Search from BookingForm to dedicated Results & Price Page
+  const handleSearchRouteFromForm = (data: { tripType: TripType; pickupCity: string; dropCity: string; dropAddress: string }) => {
+    setTripType(data.tripType);
+    setFromCity(data.pickupCity);
+    setToCity(data.dropCity);
+    setDropAddress(data.dropAddress);
+    setActiveSection('results');
+    window.scrollTo({ top: 100, behavior: 'smooth' });
   };
 
   const handleSelectVehicle = (v: Vehicle) => {
     setVehicleCat(v.category);
-    setFormKey(prev => prev + 1);
-    setActiveSection('booking');
-    window.scrollTo({ top: 120, behavior: 'smooth' });
+    setActiveSection('results');
+    window.scrollTo({ top: 100, behavior: 'smooth' });
   };
 
   const sectionTabs = [
@@ -110,13 +124,13 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 pb-16">
         
-        {/* INTERACTIVE SECTION SWITCHER BAR */}
-        <div className={`flex flex-wrap items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-2xl sm:rounded-3xl mb-8 sm:mb-10 shadow-lg transition-all ${
+        {/* INTERACTIVE SECTION SWITCHER BAR (Clean 4-grid on mobile & desktop) */}
+        <div className={`p-1.5 sm:p-2 border rounded-2xl sm:rounded-3xl mb-6 sm:mb-10 shadow-md transition-all ${
           isLight
             ? 'bg-white border-slate-200 shadow-slate-200/60'
             : 'bg-[#0B1120] border-slate-800 shadow-black/80'
         }`}>
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 w-full">
             {sectionTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeSection === tab.id;
@@ -128,50 +142,99 @@ export default function App() {
                     setActiveSection(tab.id);
                     setViewAllMode(false);
                   }}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors cursor-pointer select-none whitespace-nowrap ${
+                  className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2 sm:py-2.5 px-1 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer select-none text-center ${
                     isActive && !viewAllMode
-                      ? 'bg-amber-500 border border-amber-400 text-slate-950 font-bold shadow-sm'
+                      ? 'tab-gold-active'
                       : isLight
                         ? 'border border-transparent text-slate-700 hover:text-slate-950 hover:bg-slate-100'
                         : 'border border-transparent text-slate-300 hover:text-white hover:bg-slate-800'
                   }`}
                 >
-                  <Icon className="w-4 h-4 stroke-[2.2]" />
-                  <span>{tab.label}</span>
+                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] shrink-0" />
+                  <span className="truncate">{tab.label}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* SECTION 1: BOOKING ENGINE */}
-        {(activeSection === 'booking' || viewAllMode) && (
+        {/* DEDICATED CARS & LIVE PRICES PAGE (Opened on Search or Route Selection) */}
+        {activeSection === 'results' && (
           <section className="mb-14 sm:mb-16">
-            {/* Top Destination Image Slide Carousel */}
-            <DestinationSlider
-              onSelectRoute={handleSelectRoute}
+            <CabResultsPage
+              tripType={tripType}
+              pickupCity={fromCity || 'Varanasi'}
+              dropCity={toCity || 'Ayodhya'}
+              dropAddress={dropAddress}
+              onBackToHome={() => {
+                setActiveSection('booking');
+                window.scrollTo({ top: 100, behavior: 'smooth' });
+              }}
+              onBookingConfirmed={(b) => setConfirmedBooking(b)}
+              language={language}
               theme={theme}
             />
+          </section>
+        )}
 
-            <div className="text-center max-w-2xl mx-auto mb-6 sm:mb-8">
-              <h1 className={`text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>
-                Book Your Chauffeur Cab
-              </h1>
-              <p className={`text-xs sm:text-sm mt-1.5 max-w-md mx-auto ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                Tolls, Fuel &amp; State Taxes Included · Pay Post-Ride
-              </p>
+        {/* SECTION 1: BOOKING ENGINE & CAR SHOWCASE (Booking Form on Top, Car Slider below it) */}
+        {(activeSection === 'booking' || viewAllMode) && (
+          <section className="mb-14 sm:mb-16">
+            {/* 1. TOP HERO: ELEVATED POPUP-STYLE BOOKING ENGINE */}
+            <div className="mb-10 sm:mb-14">
+              <div className="text-center max-w-2xl mx-auto mb-5 sm:mb-7">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-500 text-xs font-bold mb-2">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? 'Direct Chauffeur Cab Booking' : 'सीधी कैब बुकिंग सेवा'}</span>
+                </div>
+                <h1 className={`text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>
+                  Book Your One-Way &amp; Outstation Cab
+                </h1>
+                <p className={`text-xs sm:text-sm mt-1 max-w-md mx-auto ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Tolls, Fuel &amp; State Taxes Included · Pay Post-Ride
+                </p>
+              </div>
+
+              {/* Elevated Standalone Route Card with Popup-Like Presence */}
+              <div className="max-w-4xl mx-auto">
+                <BookingForm
+                  key={formKey}
+                  initialTripType={tripType}
+                  initialFrom={fromCity}
+                  initialTo={toCity}
+                  initialVehicleCategory={vehicleCat}
+                  initialAutoSearch={autoSearch}
+                  onSearchRoute={handleSearchRouteFromForm}
+                  onBookingConfirmed={(b) => setConfirmedBooking(b)}
+                  language={language}
+                  theme={theme}
+                />
+              </div>
             </div>
 
-            <div className="max-w-5xl mx-auto">
-              <BookingForm
-                key={formKey}
-                initialTripType={tripType}
-                initialFrom={fromCity}
-                initialTo={toCity}
-                initialVehicleCategory={vehicleCat}
-                onBookingConfirmed={(b) => setConfirmedBooking(b)}
+            {/* 2. FLEET CARS SLIDER (Positioned directly below the booking form) */}
+            <div className="mb-10 sm:mb-14">
+              <div className="text-center mb-3">
+                <span className="text-xs font-bold text-amber-500 uppercase tracking-widest block">
+                  {language === 'en' ? 'Our Commercial Chauffeur Fleet' : 'हमारी गाड़ियां एवं कैब फ्लीट'}
+                </span>
+              </div>
+              <DestinationSlider
+                onSelectRoute={handleSelectRoute}
+                theme={theme}
+              />
+            </div>
+
+            {/* 3. HOME PAGE BOTTOM REVIEWS (PC: 3 Reviews, Mobile: 2 Reviews) */}
+            <div className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800 max-w-5xl mx-auto">
+              <CustomerReviews
                 language={language}
                 theme={theme}
+                isHomePagePreview={true}
+                onViewAllReviews={() => {
+                  setActiveSection('reviews');
+                  window.scrollTo({ top: 100, behavior: 'smooth' });
+                }}
               />
             </div>
           </section>
@@ -230,11 +293,19 @@ export default function App() {
         theme={theme}
       />
 
-      <DriverPartnerModal
+      {/* ADD TAXI LOCKED FEATURE POPUP (Shows coming soon popup with Contact Us) */}
+      <LockedFeatureModal
         isOpen={showDriverModal}
         onClose={() => setShowDriverModal(false)}
-        language={language}
+        title="Add Taxi / Driver Partner"
+        serviceName={language === 'en' ? 'Add Taxi / Fleet Attachment' : 'टैक्सी जोड़ें / कैब अटैचमेंट'}
+        description={
+          language === 'en'
+            ? 'Our automated Cab & Driver Partner attachment portal is launching soon. To attach your commercial taxi or join our verified fleet, please Contact Us directly.'
+            : 'हमारा ड्राइवर और कैब पार्टनर ऑनबोर्डिंग पोर्टल जल्द ही लाइव हो रहा है। अपनी कमर्शियल गाड़ी जोड़ने के लिए हमारे हेल्पलाइन नंबर पर तुरंत संपर्क (Contact Us) करें।'
+        }
         theme={theme}
+        language={language}
       />
 
       {/* Footer */}
