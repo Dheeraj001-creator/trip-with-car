@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   Clock, 
@@ -28,6 +28,7 @@ import { DriverPartnerModal } from './components/DriverPartnerModal';
 import { LockedFeatureModal } from './components/LockedFeatureModal';
 import { DestinationSlider } from './components/DestinationSlider';
 import { CabResultsPage } from './components/CabResultsPage';
+import { AdminDashboard } from './components/AdminDashboard';
 import { Booking, Vehicle, TripType } from './types/cab';
 import { POPULAR_ROUTES } from './data/cabsData';
 
@@ -67,6 +68,34 @@ export default function App() {
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [showTrackModal, setShowTrackModal] = useState(false);
   const [showDriverModal, setShowDriverModal] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+
+  // Secret URL routing for Admin Dashboard (e.g. #admin or /admin)
+  useEffect(() => {
+    const checkAdminRoute = () => {
+      if (
+        window.location.hash === '#admin' ||
+        window.location.pathname === '/admin' ||
+        window.location.search.includes('admin=true')
+      ) {
+        setShowAdminDashboard(true);
+      }
+    };
+    checkAdminRoute();
+    window.addEventListener('hashchange', checkAdminRoute);
+    window.addEventListener('popstate', checkAdminRoute);
+    return () => {
+      window.removeEventListener('hashchange', checkAdminRoute);
+      window.removeEventListener('popstate', checkAdminRoute);
+    };
+  }, []);
+
+  const handleCloseAdmin = () => {
+    setShowAdminDashboard(false);
+    if (window.location.hash === '#admin') {
+      window.history.pushState(null, '', window.location.pathname);
+    }
+  };
 
   // Direct route selection to dedicated Results & Price Page
   const handleSelectRoute = (from: string, to: string) => {
@@ -115,6 +144,7 @@ export default function App() {
         }}
         onOpenTrackBooking={() => setShowTrackModal(true)}
         onOpenDriverPartner={() => setShowDriverModal(true)}
+        onOpenAdmin={() => setShowAdminDashboard(true)}
         language={language}
         onToggleLanguage={() => setLanguage(l => l === 'en' ? 'hi' : 'en')}
         theme={theme}
@@ -308,6 +338,14 @@ export default function App() {
         language={language}
       />
 
+      {/* PRIVATE ADMIN DISPATCH & BOOKINGS MANAGEMENT PORTAL */}
+      <AdminDashboard
+        isOpen={showAdminDashboard}
+        onClose={handleCloseAdmin}
+        theme={theme}
+        language={language}
+      />
+
       {/* Footer */}
       <Footer
         onScrollToSection={(sectionId) => {
@@ -318,6 +356,7 @@ export default function App() {
         }}
         onOpenTrackBooking={() => setShowTrackModal(true)}
         onOpenDriverPartner={() => setShowDriverModal(true)}
+        onOpenAdmin={() => setShowAdminDashboard(true)}
         language={language}
         theme={theme}
       />

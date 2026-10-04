@@ -39,7 +39,7 @@ export const CityPickerModal: React.FC<CityPickerModalProps> = ({
   }).filter((cat) => cat.cities.length > 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
       <div className={`relative w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden my-6 border transition-colors ${
         isLight
           ? 'bg-white border-slate-300 text-slate-900'

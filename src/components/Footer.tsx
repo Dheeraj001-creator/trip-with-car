@@ -6,6 +6,7 @@ interface FooterProps {
   onScrollToSection: (id: string) => void;
   onOpenTrackBooking: () => void;
   onOpenDriverPartner: () => void;
+  onOpenAdmin?: () => void;
   language: 'en' | 'hi';
   theme: 'dark' | 'light';
 }
@@ -14,6 +15,7 @@ export const Footer: React.FC<FooterProps> = ({
   onScrollToSection,
   onOpenTrackBooking,
   onOpenDriverPartner,
+  onOpenAdmin,
   language,
   theme,
 }) => {
@@ -184,9 +186,20 @@ export const Footer: React.FC<FooterProps> = ({
         <div className={`pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4 ${
           isLight ? 'border-slate-200' : 'border-slate-800'
         }`}>
-          <p className="text-[11px] text-center sm:text-left">
-            © {new Date().getFullYear()} {COMPANY_NAME}. All rights reserved. Outstation &amp; Airport Mobility.
-          </p>
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-[11px]">
+            <span>© {new Date().getFullYear()} {COMPANY_NAME}. All rights reserved. Outstation &amp; Airport Mobility.</span>
+            {onOpenAdmin && (
+              <button
+                type="button"
+                onClick={onOpenAdmin}
+                className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-amber-500 transition-colors opacity-60 hover:opacity-100 cursor-pointer ml-1"
+                title="Staff Dispatch Portal"
+              >
+                <Lock className="w-3 h-3" />
+                <span>Staff Portal</span>
+              </button>
+            )}
+          </div>
 
           <button
             type="button"

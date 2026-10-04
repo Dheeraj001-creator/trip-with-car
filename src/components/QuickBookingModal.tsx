@@ -59,9 +59,9 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
       errors.name = language === 'en' ? 'Please enter your name' : 'कृपया नाम दर्ज करें';
     }
 
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 10) {
-      errors.phone = language === 'en' ? 'Enter valid 10-digit mobile' : '10 अंकों का मोबाइल दर्ज करें';
+    const cleanPhone = phone.replace(/\D/g, '').slice(0, 10);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      errors.phone = language === 'en' ? 'Mobile number must be exactly 10 digits' : 'मोबाइल नंबर ठीक 10 अंकों का होना चाहिए';
     }
 
     if (!email.trim() || !email.includes('@')) {
@@ -111,15 +111,18 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
     setTimeout(() => {
       saveBookingToStorage(booking);
       setIsSubmitting(false);
+      setName('');
+      setPhone('');
+      setEmail('');
       onClose();
       onBookingConfirmed(booking);
     }, 1000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2.5 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
       {/* 100% FITTED MOBILE MODAL - NO SCROLL NEEDED */}
-      <div className={`relative w-full max-w-lg rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden border transition-all ${
+      <div className={`relative w-full max-w-[430px] max-h-[95vh] overflow-y-auto scrollbar-none rounded-2xl sm:rounded-3xl shadow-2xl border transition-all ${
         isLight
           ? 'bg-white border-slate-300 text-slate-900 shadow-2xl'
           : 'bg-[#0B1120] border-slate-800 text-white shadow-2xl'
@@ -221,27 +224,34 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-2 gap-2">
               {/* Mobile Number with +91 */}
               <div>
-                <label className="block text-[11px] font-bold mb-1 flex items-center gap-1 opacity-90">
+                <label className="block text-[10px] sm:text-[11px] font-bold mb-0.5 flex items-center gap-1 opacity-90">
                   <Phone className="w-3 h-3 text-amber-500 stroke-[2.5]" />
-                  <span>{language === 'en' ? 'Mobile Number' : 'मोबाइल नंबर'} *</span>
+                  <span>{language === 'en' ? 'Mobile' : 'मोबाइल'} *</span>
                 </label>
                 <div className="relative">
-                  <span className={`absolute left-3 top-2 text-xs font-bold ${
+                  <span className={`absolute left-2.5 top-2 text-[11px] font-bold ${
                     isLight ? 'text-slate-500' : 'text-slate-400'
                   }`}>
                     +91
                   </span>
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     required
                     maxLength={10}
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 10);
+                      setPhone(pasted);
+                    }}
                     placeholder="9876543210"
-                    className={`w-full rounded-xl pl-11 pr-3 py-2 text-xs sm:text-sm font-bold font-mono tracking-wider transition-all focus:outline-none ${
+                    className={`w-full rounded-xl pl-9 pr-2 py-1.5 text-xs sm:text-sm font-bold font-mono tracking-wider transition-all focus:outline-none ${
                       isLight
                         ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-amber-500 focus:bg-white'
                         : 'bg-[#070B14] border border-slate-700 text-white focus:border-amber-500'
@@ -249,15 +259,15 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
                   />
                 </div>
                 {formErrors.phone && (
-                  <p className="text-red-500 text-[10px] mt-0.5 font-bold">{formErrors.phone}</p>
+                  <p className="text-red-500 text-[9px] mt-0.5 font-bold">{formErrors.phone}</p>
                 )}
               </div>
 
               {/* Email Address */}
               <div>
-                <label className="block text-[11px] font-bold mb-1 flex items-center gap-1 opacity-90">
+                <label className="block text-[10px] sm:text-[11px] font-bold mb-0.5 flex items-center gap-1 opacity-90">
                   <Mail className="w-3 h-3 text-amber-500 stroke-[2.5]" />
-                  <span>{language === 'en' ? 'Email Address' : 'ईमेल आईडी'} *</span>
+                  <span>{language === 'en' ? 'Email' : 'ईमेल'} *</span>
                 </label>
                 <input
                   type="email"
@@ -265,14 +275,14 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@email.com"
-                  className={`w-full rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold transition-all focus:outline-none ${
+                  className={`w-full rounded-xl px-2.5 py-1.5 text-xs sm:text-sm font-semibold transition-all focus:outline-none ${
                     isLight
                       ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-amber-500 focus:bg-white'
                       : 'bg-[#070B14] border border-slate-700 text-white focus:border-amber-500'
                   }`}
                 />
                 {formErrors.email && (
-                  <p className="text-red-500 text-[10px] mt-0.5 font-bold">{formErrors.email}</p>
+                  <p className="text-red-500 text-[9px] mt-0.5 font-bold">{formErrors.email}</p>
                 )}
               </div>
             </div>

@@ -7,6 +7,7 @@ interface HeaderProps {
   onSelectTab: (tabId: string) => void;
   onOpenTrackBooking: () => void;
   onOpenDriverPartner: () => void;
+  onOpenAdmin?: () => void;
   language?: 'en' | 'hi';
   onToggleLanguage?: () => void;
   theme: 'dark' | 'light';
@@ -18,6 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectTab,
   onOpenTrackBooking,
   onOpenDriverPartner,
+  onOpenAdmin,
   theme,
   onToggleTheme,
 }) => {
@@ -225,6 +227,28 @@ export const Header: React.FC<HeaderProps> = ({
               <Phone className="w-4 h-4 stroke-[2.8]" />
               <span>Contact Us</span>
             </a>
+
+            {/* Mobile Admin Dispatch Portal access */}
+            {onOpenAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenAdmin();
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full py-2.5 px-3.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-colors ${
+                  isLight
+                    ? 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                    : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Lock className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Admin / Dispatch Portal</span>
+                </div>
+                <span className="text-[10px] text-amber-500 font-mono font-bold">PIN Access</span>
+              </button>
+            )}
           </div>
         </div>
       )}

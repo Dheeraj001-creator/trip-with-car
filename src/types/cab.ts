@@ -105,6 +105,11 @@ export interface Booking {
   paymentPreference: 'cash_to_driver' | 'advance_20' | 'full_online';
   status: 'confirmed' | 'assigned' | 'completed' | 'cancelled';
   createdAt: string;
+
+  // Driver Dispatch assignment (Admin Portal)
+  driverName?: string;
+  driverPhone?: string;
+  vehicleNumber?: string;
 }
 
 export interface Review {

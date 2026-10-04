@@ -45,7 +45,7 @@ I would like to onboard my commercial vehicle with the TripWithCar fleet network
   const partnerWhatsAppUrl = `https://wa.me/${COMPANY_WHATSAPP}?text=${encodeURIComponent(partnerWhatsAppText)}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
       <div className={`relative w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden my-8 border transition-colors ${
         isLight
           ? 'bg-white border-slate-300 text-slate-900'
@@ -120,10 +120,17 @@ I would like to onboard my commercial vehicle with the TripWithCar fleet network
               </label>
               <input
                 type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 required
                 maxLength={10}
                 value={driverPhone}
-                onChange={(e) => setDriverPhone(e.target.value)}
+                onChange={(e) => setDriverPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 10);
+                  setDriverPhone(pasted);
+                }}
                 placeholder="10-digit number"
                 className={`w-full rounded-xl px-3.5 py-2.5 text-xs font-bold font-mono focus:outline-none transition-colors ${
                   isLight

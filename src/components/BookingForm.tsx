@@ -17,7 +17,9 @@ import {
   Phone,
   X,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Calendar,
+  Clock
 } from 'lucide-react';
 import { TripType, Vehicle, Booking } from '../types/cab';
 import { VEHICLES, CITIES_LIST, AIRPORTS_LIST } from '../data/cabsData';
@@ -66,18 +68,27 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   // Coming soon popup modal for locked tabs (Round Trip & Airport Taxi)
   const [comingSoonModal, setComingSoonModal] = useState<{ title: string; serviceName: string } | null>(null);
 
-  // Mobile Popup Elevation: on mobile (<768px), card appears elevated in front on initial open
-  const [isMobilePopup, setIsMobilePopup] = useState(() => {
+  // Mobile Popup Elevation: on mobile (<768px), card appears elevated as a popup on initial open
+  const [isMobilePopup, setIsMobilePopup] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
-    const dismissed = sessionStorage.getItem('twc_mobile_popup_dismissed');
-    return !dismissed && window.innerWidth < 768;
+    return window.innerWidth < 768;
   });
 
   const handleDismissMobilePopup = () => {
     setIsMobilePopup(false);
-    sessionStorage.setItem('twc_mobile_popup_dismissed', 'true');
     if (onCloseModal) onCloseModal();
   };
+
+  // If user expands screen to desktop (>= 768px), automatically close popup overlay
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setIsMobilePopup(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Search state: initially false so cars show without price until search is clicked, or auto-true if selected from route
   const [hasSearched, setHasSearched] = useState(initialAutoSearch);
@@ -107,10 +118,21 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-  const [pickupDate] = useState(todayStr);
-  const [pickupTime] = useState('08:00');
-  const [returnDate] = useState(tomorrowStr);
-  const [returnTime] = useState('18:00');
+  const [pickupDate, setPickupDate] = useState(todayStr);
+  const [pickupTime, setPickupTime] = useState('08:00');
+  const [returnDate, setReturnDate] = useState(tomorrowStr);
+  const [returnTime, setReturnTime] = useState('18:00');
+
+  // Prevent background scroll when mobile popup is open
+  useEffect(() => {
+    if (isMobilePopup) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isMobilePopup]);
 
   // Local Package specifics
   const [localPackage, setLocalPackage] = useState<'4h_40km' | '8h_80km' | '12h_120km'>('8h_80km');
@@ -167,6 +189,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
     }
     setFormErrors({});
     if (onSearchRoute) {
+      setIsMobilePopup(false);
       onSearchRoute({ tripType, pickupCity, dropCity, dropAddress });
       if (isModal && onCloseModal) {
         onCloseModal();
@@ -216,24 +239,24 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   // All vehicles displayed for full fleet transparency
   const displayedVehicles = VEHICLES;
 
-  // Reordered Trip Type Tabs: 1. One Way, 2. Local Hourly, 3. Round Trip (Locked), 4. Airport Taxi (Locked)
+  // Reordered Trip Type Tabs: 1. One Way, 2. Round Trip (OPEN), 3. Local Hourly, 4. Airport Taxi (Locked)
   const tripTabs = [
     { type: 'oneway', label: 'One Way', icon: Navigation, locked: false },
+    { type: 'roundtrip', label: 'Round Trip', icon: ArrowLeftRight, locked: false },
     { type: 'local', label: 'Local Hourly', icon: Car, locked: false },
-    { type: 'roundtrip', label: 'Round Trip', icon: ArrowLeftRight, locked: true },
     { type: 'airport', label: 'Airport Taxi', icon: Plane, locked: true },
   ];
 
-  const formCard = (
-    <div className={`relative max-w-4xl mx-auto rounded-2xl sm:rounded-3xl border shadow-2xl p-3.5 sm:p-6 md:p-8 transition-all ${
+  const renderFormCard = (inPopup: boolean = false) => (
+    <div className={`relative max-w-4xl mx-auto rounded-2xl sm:rounded-3xl border shadow-xl ${
+      inPopup ? 'p-3 sm:p-4' : 'p-3.5 sm:p-5 md:p-6'
+    } transition-all ${
       isLight
-        ? 'bg-white border-amber-500/30 shadow-slate-300/40 ring-1 ring-amber-500/20'
-        : 'bg-[#0B1120] border-amber-500/30 shadow-black/95 ring-1 ring-amber-500/20'
-    } ${isModal ? 'mb-0' : 'mb-8 sm:mb-12'}`}>
-      {/* Subtle top golden accent glow line */}
-      <div className="absolute top-0 inset-x-8 h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent rounded-full opacity-80" />
+        ? 'bg-white border-slate-200 shadow-slate-200/40'
+        : 'bg-[#0B1120] border-slate-800 shadow-black/80'
+    } ${inPopup || isModal ? 'mb-0' : 'mb-8 sm:mb-12'}`}>
 
-      {/* Modal Close Button on top right */}
+      {/* Modal Close Button on top right only if isModal is explicitly passed */}
       {isModal && onCloseModal && (
         <button
           type="button"
@@ -245,8 +268,10 @@ export const BookingForm: React.FC<BookingFormProps> = ({
         </button>
       )}
       
-      {/* Trip Type Segmented Tabs: One Way, Local Hourly, Round Trip (Locked), Airport Taxi (Locked) */}
-      <div className={`grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border mb-4 sm:mb-5 ${
+      {/* Trip Type Segmented Tabs */}
+      <div className={`grid grid-cols-2 sm:grid-cols-4 ${
+        inPopup ? 'gap-1 p-0.5 sm:p-1 rounded-xl mb-2 sm:mb-2.5' : 'gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl mb-4 sm:mb-5'
+      } border ${
         isLight ? 'bg-slate-100 border-slate-200' : 'bg-[#04070F] border-slate-800'
       }`}>
           {tripTabs.map((tab) => {
@@ -267,7 +292,9 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                   setTripType(tab.type as TripType);
                   setHasSearched(false);
                 }}
-                className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2 sm:py-2.5 px-2 sm:px-3 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer select-none text-center min-h-[40px] sm:min-h-[44px] ${
+                className={`flex items-center justify-center gap-1 sm:gap-2 ${
+                  inPopup ? 'py-1 px-1.5 rounded-lg min-h-[32px] text-[11px]' : 'py-2 sm:py-2.5 px-2 sm:px-3 rounded-lg sm:rounded-xl min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm'
+                } font-bold transition-all cursor-pointer select-none text-center ${
                   isActive
                     ? 'tab-gold-active'
                     : tab.locked
@@ -279,14 +306,14 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                         : 'border border-transparent text-slate-300 hover:text-white hover:bg-slate-800/80'
                 }`}
               >
-                <div className={`flex items-center gap-1.5 truncate ${
+                <div className={`flex items-center gap-1 truncate ${
                   tab.locked ? 'opacity-65 filter blur-[0.3px]' : ''
                 }`}>
-                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] shrink-0" />
+                  <Icon className={`${inPopup ? 'w-3 h-3' : 'w-3.5 h-3.5 sm:w-4 sm:h-4'} stroke-[2.2] shrink-0`} />
                   <span className="truncate">{tab.label}</span>
                 </div>
                 {tab.locked && (
-                  <span className="filter-none opacity-100 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-black shadow-xs shrink-0 tracking-wide">
+                  <span className="filter-none opacity-100 flex items-center gap-0.5 px-1 py-0.5 rounded bg-amber-500 text-slate-950 text-[9px] font-black shadow-xs shrink-0 tracking-wide">
                     <Lock className="w-2.5 h-2.5 stroke-[3]" />
                     <span>Soon</span>
                   </span>
@@ -418,6 +445,39 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               </div>
             </div>
 
+            {/* Local Hourly Date & Time */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              <div className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl sm:rounded-2xl border ${
+                isLight ? 'bg-slate-50 border-slate-300' : 'bg-[#070B14] border-slate-800'
+              }`}>
+                <label className="text-[10px] sm:text-[11px] font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                  <Calendar className="w-3 h-3 stroke-[2.5]" />
+                  <span>Pickup Date</span>
+                </label>
+                <input
+                  type="date"
+                  value={pickupDate}
+                  min={todayStr}
+                  onChange={(e) => setPickupDate(e.target.value)}
+                  className="w-full bg-transparent text-xs sm:text-sm font-semibold focus:outline-none cursor-pointer"
+                />
+              </div>
+              <div className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl sm:rounded-2xl border ${
+                isLight ? 'bg-slate-50 border-slate-300' : 'bg-[#070B14] border-slate-800'
+              }`}>
+                <label className="text-[10px] sm:text-[11px] font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                  <Clock className="w-3 h-3 stroke-[2.5]" />
+                  <span>Pickup Time</span>
+                </label>
+                <input
+                  type="time"
+                  value={pickupTime}
+                  onChange={(e) => setPickupTime(e.target.value)}
+                  className="w-full bg-transparent text-xs sm:text-sm font-semibold focus:outline-none cursor-pointer"
+                />
+              </div>
+            </div>
+
             {/* SEARCH CABS BUTTON */}
             <div className="pt-1 flex justify-end">
               <button
@@ -431,17 +491,24 @@ export const BookingForm: React.FC<BookingFormProps> = ({
             </div>
           </div>
         ) : (
-          /* Outstation Route Chooser (Fitted Row with From, Swap, To, and Search Car button) */
-          <div>
-            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 sm:gap-3 relative">
+          /* Outstation Route Chooser (Fitted Row with From, Swap, To, Date/Time, and Search Car button) */
+          <div className="space-y-2 sm:space-y-3">
+            {/* ROW 1: FROM AND TO CITIES WITH SWAP */}
+            <div className={`flex flex-col md:flex-row items-stretch md:items-center ${
+              inPopup ? 'gap-1.5' : 'gap-2 sm:gap-3'
+            } relative`}>
               {/* From City Box with Dynamic Floating Autocomplete */}
               <div className="flex-1 relative">
-                <div className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl sm:rounded-2xl border transition-all ${
+                <div className={`${
+                  inPopup ? 'px-2.5 py-1.5 rounded-xl' : 'px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl sm:rounded-2xl'
+                } border transition-all ${
                   isLight
                     ? 'bg-slate-50 border-slate-300 focus-within:border-amber-500 focus-within:bg-white focus-within:shadow-md'
                     : 'bg-[#070B14] border-slate-800 focus-within:border-amber-500 focus-within:bg-[#0B1120]'
                 }`}>
-                  <label className="text-[11px] font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                  <label className={`${
+                    inPopup ? 'text-[10px] mb-0' : 'text-[11px] mb-0.5'
+                  } font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1`}>
                     <MapPin className="w-3 h-3 stroke-[2.5]" />
                     <span>From</span>
                   </label>
@@ -455,7 +522,9 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                     onFocus={() => setFromSuggestionsOpen(true)}
                     onBlur={() => setTimeout(() => setFromSuggestionsOpen(false), 200)}
                     placeholder="e.g. Varanasi, Lucknow"
-                    className="w-full bg-transparent text-sm sm:text-base font-semibold placeholder:text-[11px] sm:placeholder:text-xs placeholder:font-normal placeholder:text-slate-400/60 dark:placeholder:text-slate-500/60 focus:outline-none"
+                    className={`w-full bg-transparent ${
+                      inPopup ? 'text-xs sm:text-sm font-semibold' : 'text-sm sm:text-base font-semibold'
+                    } placeholder:text-[11px] sm:placeholder:text-xs placeholder:font-normal placeholder:text-slate-400/60 dark:placeholder:text-slate-500/60 focus:outline-none`}
                   />
                 </div>
 
@@ -486,26 +555,34 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               </div>
 
               {/* Swap Button: Vertical arrows on mobile, horizontal on desktop */}
-              <div className="flex items-center justify-center shrink-0 -my-2 md:my-0 z-10 mx-auto md:mx-0">
+              <div className={`flex items-center justify-center shrink-0 ${
+                inPopup ? '-my-1.5' : '-my-2 md:my-0'
+              } z-10 mx-auto md:mx-0`}>
                 <button
                   type="button"
                   onClick={handleSwapLocations}
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full btn-gold flex items-center justify-center shadow-md cursor-pointer transition-all hover:rotate-180 border-2 border-white dark:border-[#0B1120]"
+                  className={`${
+                    inPopup ? 'w-7 h-7 sm:w-8 sm:h-8' : 'w-9 h-9 sm:w-10 sm:h-10'
+                  } rounded-full btn-gold flex items-center justify-center shadow-md cursor-pointer transition-all hover:rotate-180 border-2 border-white dark:border-[#0B1120]`}
                   title="Swap Origin & Destination"
                 >
-                  <ArrowUpDown className="w-4 h-4 stroke-[2.5] block md:hidden" />
-                  <ArrowLeftRight className="w-4 h-4 stroke-[2.5] hidden md:block" />
+                  <ArrowUpDown className="w-3.5 h-3.5 stroke-[2.5] block md:hidden" />
+                  <ArrowLeftRight className="w-3.5 h-3.5 stroke-[2.5] hidden md:block" />
                 </button>
               </div>
 
               {/* To City Box with Dynamic Floating Autocomplete */}
               <div className="flex-1 relative">
-                <div className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl sm:rounded-2xl border transition-all ${
+                <div className={`${
+                  inPopup ? 'px-2.5 py-1.5 rounded-xl' : 'px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl sm:rounded-2xl'
+                } border transition-all ${
                   isLight
                     ? 'bg-slate-50 border-slate-300 focus-within:border-emerald-600 focus-within:bg-white focus-within:shadow-md'
                     : 'bg-[#070B14] border-slate-800 focus-within:border-emerald-500 focus-within:bg-[#0B1120]'
                 }`}>
-                  <label className="text-[11px] font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                  <label className={`${
+                    inPopup ? 'text-[10px] mb-0' : 'text-[11px] mb-0.5'
+                  } font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-1`}>
                     <MapPin className="w-3 h-3 stroke-[2.5]" />
                     <span>To</span>
                   </label>
@@ -519,7 +596,9 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                     onFocus={() => setToSuggestionsOpen(true)}
                     onBlur={() => setTimeout(() => setToSuggestionsOpen(false), 200)}
                     placeholder="e.g. Ayodhya, Prayagraj"
-                    className="w-full bg-transparent text-sm sm:text-base font-semibold placeholder:text-[11px] sm:placeholder:text-xs placeholder:font-normal placeholder:text-slate-400/60 dark:placeholder:text-slate-500/60 focus:outline-none"
+                    className={`w-full bg-transparent ${
+                      inPopup ? 'text-xs sm:text-sm font-semibold' : 'text-sm sm:text-base font-semibold'
+                    } placeholder:text-[11px] sm:placeholder:text-xs placeholder:font-normal placeholder:text-slate-400/60 dark:placeholder:text-slate-500/60 focus:outline-none`}
                   />
                 </div>
 
@@ -548,32 +627,138 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                 )}
                 {formErrors.dropCity && <p className="text-red-500 text-xs font-semibold mt-1">{formErrors.dropCity}</p>}
               </div>
+            </div>
 
-              {/* SEARCH CABS BUTTON (Positioned right beside the To box!) */}
-              <div className="shrink-0 flex items-stretch md:items-end mt-1 md:mt-0">
-                <button
-                  type="button"
-                  onClick={handleSearchCars}
-                  className="btn-gold w-full md:w-auto h-[48px] sm:h-[54px] px-5 sm:px-6 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg cursor-pointer transition-all"
-                >
-                  <Search className="w-4 h-4 stroke-[2.5]" />
-                  <span>Search Cabs</span>
-                </button>
+            {/* ROW 2: DATE & TIME SELECTOR (BEFORE SEARCH BUTTON) */}
+            {tripType === 'roundtrip' ? (
+              /* Round Trip: Pickup Date + Time and Return Date + Time */
+              <div className={`grid grid-cols-1 sm:grid-cols-2 ${inPopup ? 'gap-1.5' : 'gap-2 sm:gap-3'}`}>
+                {/* Pickup Schedule */}
+                <div className={`grid grid-cols-2 gap-1.5 ${
+                  inPopup ? 'p-1.5 rounded-lg' : 'p-2 sm:p-2.5 rounded-xl sm:rounded-2xl'
+                } border ${isLight ? 'bg-slate-50 border-slate-300' : 'bg-[#070B14] border-slate-800'}`}>
+                  <div>
+                    <label className="text-[9px] font-bold text-amber-500 uppercase tracking-wider flex items-center gap-0.5 mb-0.5">
+                      <Calendar className="w-2.5 h-2.5" />
+                      <span>Pickup Date</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={pickupDate}
+                      min={todayStr}
+                      onChange={(e) => setPickupDate(e.target.value)}
+                      className="w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-amber-500 uppercase tracking-wider flex items-center gap-0.5 mb-0.5">
+                      <Clock className="w-2.5 h-2.5" />
+                      <span>Pickup Time</span>
+                    </label>
+                    <input
+                      type="time"
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Return Schedule */}
+                <div className={`grid grid-cols-2 gap-1.5 ${
+                  inPopup ? 'p-1.5 rounded-lg' : 'p-2 sm:p-2.5 rounded-xl sm:rounded-2xl'
+                } border ${isLight ? 'bg-slate-50 border-slate-300' : 'bg-[#070B14] border-slate-800'}`}>
+                  <div>
+                    <label className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-0.5 mb-0.5">
+                      <Calendar className="w-2.5 h-2.5" />
+                      <span>Return Date</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={returnDate}
+                      min={pickupDate || todayStr}
+                      onChange={(e) => setReturnDate(e.target.value)}
+                      className="w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-0.5 mb-0.5">
+                      <Clock className="w-2.5 h-2.5" />
+                      <span>Return Time</span>
+                    </label>
+                    <input
+                      type="time"
+                      value={returnTime}
+                      onChange={(e) => setReturnTime(e.target.value)}
+                      className="w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer"
+                    />
+                  </div>
+                </div>
               </div>
+            ) : (
+              /* One-Way: Pickup Date + Pickup Time before button */
+              <div className={`grid grid-cols-2 ${inPopup ? 'gap-1.5' : 'gap-2 sm:gap-3'}`}>
+                <div className={`${
+                  inPopup ? 'px-2.5 py-1 rounded-lg' : 'px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl sm:rounded-2xl'
+                } border transition-all ${isLight ? 'bg-slate-50 border-slate-300' : 'bg-[#070B14] border-slate-800'}`}>
+                  <label className={`${inPopup ? 'text-[9px]' : 'text-[10px] sm:text-[11px]'} font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1 mb-0.5`}>
+                    <Calendar className="w-3 h-3 stroke-[2.5]" />
+                    <span>Pickup Date</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={pickupDate}
+                    min={todayStr}
+                    onChange={(e) => setPickupDate(e.target.value)}
+                    className={`w-full bg-transparent ${inPopup ? 'text-xs font-semibold' : 'text-xs sm:text-sm font-semibold'} focus:outline-none cursor-pointer`}
+                  />
+                </div>
+
+                <div className={`${
+                  inPopup ? 'px-2.5 py-1 rounded-lg' : 'px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl sm:rounded-2xl'
+                } border transition-all ${isLight ? 'bg-slate-50 border-slate-300' : 'bg-[#070B14] border-slate-800'}`}>
+                  <label className={`${inPopup ? 'text-[9px]' : 'text-[10px] sm:text-[11px]'} font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1 mb-0.5`}>
+                    <Clock className="w-3 h-3 stroke-[2.5]" />
+                    <span>Pickup Time</span>
+                  </label>
+                  <input
+                    type="time"
+                    value={pickupTime}
+                    onChange={(e) => setPickupTime(e.target.value)}
+                    className={`w-full bg-transparent ${inPopup ? 'text-xs font-semibold' : 'text-xs sm:text-sm font-semibold'} focus:outline-none cursor-pointer`}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* ROW 3: SEARCH CABS BUTTON */}
+            <div>
+              <button
+                type="button"
+                onClick={handleSearchCars}
+                className={`btn-gold w-full ${
+                  inPopup ? 'h-[40px] px-4 text-xs rounded-xl' : 'h-[48px] sm:h-[52px] px-6 rounded-xl sm:rounded-2xl text-xs sm:text-sm'
+                } font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg cursor-pointer transition-all`}
+              >
+                <Search className="w-4 h-4 stroke-[2.5]" />
+                <span>Search Cabs</span>
+              </button>
             </div>
 
             {/* Clean Minimal Route Status Line */}
             {isBothCitiesSelected && (
-              <div className={`mt-3.5 pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+              <div className={`${
+                inPopup ? 'mt-2 pt-2 text-[11px]' : 'mt-3.5 pt-3 text-xs'
+              } border-t flex flex-wrap items-center justify-between gap-1.5 ${
                 isLight ? 'border-slate-200 text-slate-700' : 'border-slate-800/80 text-slate-300'
               }`}>
-                <div className="flex items-center gap-2 font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span>{pickupCity} → {dropCity}</span>
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span>{pickupCity} {tripType === 'roundtrip' ? '⇄' : '→'} {dropCity}</span>
                   <span className="text-amber-500 font-mono font-bold">(~{fareResult.estimatedDistanceKm} KM)</span>
                 </div>
-                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                  Tolls &amp; Fuel Included · Zero Advance
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-[10px] sm:text-xs">
+                  {tripType === 'roundtrip' ? 'Round Trip · Tolls, Fuel & Chauffeur Included' : 'Tolls & Fuel Included · Zero Advance'}
                 </span>
               </div>
             )}
@@ -586,7 +771,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
         <div className="relative w-full max-w-4xl my-auto">
-          {formCard}
+          {renderFormCard(false)}
 
           {onCloseModal && (
             <div className="text-center mt-3">
@@ -615,7 +800,35 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full relative">
+      {/* MOBILE POPUP MODAL (Perfect center, snug fit, blurred background, no gold border) */}
+      {isMobilePopup && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md md:hidden animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleDismissMobilePopup();
+            }
+          }}
+        >
+          <div className="relative w-full max-w-[390px] mx-auto my-auto animate-in zoom-in-95 duration-150">
+            {/* Clean Neutral Close Cross Button on Top-Right Corner */}
+            <button
+              type="button"
+              onClick={handleDismissMobilePopup}
+              className="absolute -top-3 -right-1 z-50 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-200 hover:text-white flex items-center justify-center shadow-lg transition-all cursor-pointer active:scale-90"
+              aria-label="Close Popup"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+
+            {/* The EXACT form card fitted with identical design */}
+            {renderFormCard(true)}
+          </div>
+        </div>
+      )}
+
       {/* Top Value Strip */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-2 border-b border-inherit">
         <div>
@@ -628,16 +841,29 @@ export const BookingForm: React.FC<BookingFormProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Quick button to open mobile popup if user wants */}
+          <button
+            type="button"
+            onClick={() => setIsMobilePopup(true)}
+            className="md:hidden flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-500 active:scale-95 transition-all cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <span>{language === 'en' ? 'Open Popup' : 'पॉपअप खोलें'}</span>
+          </button>
+
           <div className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl border ${
             isLight ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
           }`}>
-            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
             <span>Pay After Trip · ₹0 Advance</span>
           </div>
         </div>
       </div>
 
-      {formCard}
+      {/* IN-PLACE BOOKING CARD ON PAGE (Always exists on page so it stays when popup is dismissed) */}
+      <div className="w-full">
+        {renderFormCard(false)}
+      </div>
 
       {/* AUTOMATIC LIVE CARS SECTION */}
       <div ref={cabsSectionRef} className="mb-8">

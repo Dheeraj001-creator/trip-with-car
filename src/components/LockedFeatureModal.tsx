@@ -45,7 +45,7 @@ export const LockedFeatureModal: React.FC<LockedFeatureModalProps> = ({
   const whatsappUrl = `https://wa.me/91${COMPANY_WHATSAPP.replace(/\D/g, '')}?text=${whatsappMessage}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
       <div
         className={`relative w-full max-w-md rounded-3xl border shadow-2xl p-6 sm:p-7 overflow-hidden transition-all ${
           isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0B1120] border-slate-800 text-white'

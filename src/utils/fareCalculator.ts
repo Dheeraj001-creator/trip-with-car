@@ -186,15 +186,62 @@ Please confirm chauffeur assignment and dispatch credentials.`;
 }
 
 const BOOKINGS_STORAGE_KEY = 'tripwithcar_user_bookings';
+const ADMIN_PIN_KEY = 'tripwithcar_admin_pin';
+const DEFAULT_ADMIN_PIN = '1234';
+
+export function getAdminPin(): string {
+  try {
+    return localStorage.getItem(ADMIN_PIN_KEY) || DEFAULT_ADMIN_PIN;
+  } catch {
+    return DEFAULT_ADMIN_PIN;
+  }
+}
+
+export function setAdminPin(pin: string): void {
+  try {
+    localStorage.setItem(ADMIN_PIN_KEY, pin);
+  } catch (err) {
+    console.error('Failed to set admin pin', err);
+  }
+}
 
 export function saveBookingToStorage(booking: Booking): void {
   try {
     const existingStr = localStorage.getItem(BOOKINGS_STORAGE_KEY);
     const bookings: Booking[] = existingStr ? JSON.parse(existingStr) : [];
-    bookings.unshift(booking);
-    localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(bookings.slice(0, 20)));
+    // If already exists, update it, else add to beginning
+    const index = bookings.findIndex(b => b.bookingId === booking.bookingId);
+    if (index !== -1) {
+      bookings[index] = booking;
+    } else {
+      bookings.unshift(booking);
+    }
+    localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(bookings.slice(0, 100)));
   } catch (err) {
     console.error('Failed to save booking to storage', err);
+  }
+}
+
+export function updateBookingInStorage(updatedBooking: Booking): void {
+  saveBookingToStorage(updatedBooking);
+}
+
+export function deleteBookingFromStorage(bookingId: string): void {
+  try {
+    const existingStr = localStorage.getItem(BOOKINGS_STORAGE_KEY);
+    const bookings: Booking[] = existingStr ? JSON.parse(existingStr) : [];
+    const filtered = bookings.filter(b => b.bookingId !== bookingId);
+    localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(filtered));
+  } catch (err) {
+    console.error('Failed to delete booking', err);
+  }
+}
+
+export function clearAllBookingsFromStorage(): void {
+  try {
+    localStorage.removeItem(BOOKINGS_STORAGE_KEY);
+  } catch (err) {
+    console.error('Failed to clear bookings', err);
   }
 }
 
@@ -205,6 +252,28 @@ export function getBookingsFromStorage(): Booking[] {
   } catch (err) {
     return [];
   }
+}
+
+export function generateDriverAssignmentWhatsAppText(booking: Booking): string {
+  const driverName = booking.driverName || 'Designated Senior Chauffeur';
+  const driverPhone = booking.driverPhone || COMPANY_WHATSAPP;
+  const vehicleNo = booking.vehicleNumber || 'Commercial AC Cab';
+
+  return `*🚗 TRIPWITHCAR - CHAUFFEUR & CAB DETAILS*
+Namaste ${booking.passengerName}! Your cab reservation details:
+
+*Booking ID:* ${booking.bookingId}
+*Trip:* ${booking.pickupCity} → ${booking.dropCity || 'Destination'}
+*Date & Time:* ${booking.pickupDate} at ${booking.pickupTime}
+*Cab Model:* ${booking.vehicle.name}
+
+*DRIVER DETAILS:*
+👤 *Driver Name:* ${driverName}
+📱 *Driver Contact:* ${driverPhone}
+🚘 *Vehicle Number:* ${vehicleNo}
+💰 *Total Fare:* ₹${booking.totalFare} (Pay after ride · Tolls & Fuel Included)
+
+Have a safe and comfortable trip with TripWithCar! Need help? Call: +91 96968 76785.`;
 }
 
 export function findBooking(query: string): Booking | null {
