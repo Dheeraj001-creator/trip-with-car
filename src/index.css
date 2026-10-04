@@ -23,6 +23,32 @@
     letter-spacing: -0.025em;
     font-weight: 800;
   }
+
+  /* Prevent browser and mobile autofill from creating white-on-white text */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover, 
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-transition: background-color 5000s ease-in-out 0s;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  /* Subtle, faint, light placeholder styling so empty inputs never look filled */
+  input::placeholder,
+  textarea::placeholder {
+    color: #94a3b8 !important;
+    opacity: 0.4 !important;
+    font-weight: 400 !important;
+    -webkit-text-fill-color: #94a3b8 !important;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #64748b !important;
+    opacity: 0.42 !important;
+    font-weight: 400 !important;
+    -webkit-text-fill-color: #64748b !important;
+  }
 }
 
 /* ========================================================

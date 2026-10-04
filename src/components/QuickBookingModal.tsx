@@ -49,7 +49,7 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
 
   if (!isOpen) return null;
 
-  const isLight = theme === 'light';
+  const isLight = theme === 'light' || (typeof document !== 'undefined' && document.documentElement.classList.contains('light'));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -49,6 +49,16 @@ export default function App() {
     });
   };
 
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
   const isLight = theme === 'light';
 
   // Navigation & Active Section View
@@ -67,8 +77,20 @@ export default function App() {
   // Modals
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [showTrackModal, setShowTrackModal] = useState(false);
+  const [trackingBookingId, setTrackingBookingId] = useState<string | undefined>(undefined);
+  const [forceOpenMobilePopup, setForceOpenMobilePopup] = useState<boolean>(false);
   const [showDriverModal, setShowDriverModal] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+
+  // Check URL params for track booking link (e.g. ?track=TWC-2026-...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const trackParam = params.get('track');
+    if (trackParam) {
+      setTrackingBookingId(trackParam);
+      setShowTrackModal(true);
+    }
+  }, []);
 
   // Secret URL routing for Admin Dashboard (e.g. #admin or /admin)
   useEffect(() => {
@@ -93,6 +115,34 @@ export default function App() {
   const handleCloseAdmin = () => {
     setShowAdminDashboard(false);
     if (window.location.hash === '#admin') {
+      window.history.pushState(null, '', window.location.pathname);
+    }
+  };
+
+  const handleTrackBooking = (bookingId: string) => {
+    setConfirmedBooking(null);
+    setTrackingBookingId(bookingId);
+    setShowTrackModal(true);
+    const newUrl = `${window.location.pathname}?track=${bookingId}`;
+    window.history.pushState({ track: bookingId }, '', newUrl);
+  };
+
+  const handleNewBooking = () => {
+    setConfirmedBooking(null);
+    setTripType('oneway');
+    setFromCity('');
+    setToCity('');
+    setDropAddress('');
+    setFormKey(prev => prev + 1);
+    setForceOpenMobilePopup(true);
+    setActiveSection('booking');
+    window.scrollTo({ top: 100, behavior: 'smooth' });
+  };
+
+  const handleCloseTrackModal = () => {
+    setShowTrackModal(false);
+    setTrackingBookingId(undefined);
+    if (window.location.search.includes('track=')) {
       window.history.pushState(null, '', window.location.pathname);
     }
   };
@@ -234,6 +284,8 @@ export default function App() {
                   initialTo={toCity}
                   initialVehicleCategory={vehicleCat}
                   initialAutoSearch={autoSearch}
+                  forceOpenMobilePopup={forceOpenMobilePopup}
+                  onCloseMobilePopup={() => setForceOpenMobilePopup(false)}
                   onSearchRoute={handleSearchRouteFromForm}
                   onBookingConfirmed={(b) => setConfirmedBooking(b)}
                   language={language}
@@ -246,7 +298,7 @@ export default function App() {
             <div className="mb-10 sm:mb-14">
               <div className="text-center mb-3">
                 <span className="text-xs font-bold text-amber-500 uppercase tracking-widest block">
-                  {language === 'en' ? 'Our Commercial Chauffeur Fleet' : 'हमारी गाड़ियां एवं कैब फ्लीट'}
+                  our booking cars
                 </span>
               </div>
               <DestinationSlider
@@ -312,13 +364,16 @@ export default function App() {
       <BookingConfirmationModal
         booking={confirmedBooking}
         onClose={() => setConfirmedBooking(null)}
+        onTrackBooking={handleTrackBooking}
+        onNewBooking={handleNewBooking}
         language={language}
         theme={theme}
       />
 
       <TrackBookingModal
         isOpen={showTrackModal}
-        onClose={() => setShowTrackModal(false)}
+        onClose={handleCloseTrackModal}
+        initialBookingId={trackingBookingId}
         language={language}
         theme={theme}
       />

@@ -35,6 +35,8 @@ interface BookingFormProps {
   initialTo?: string;
   initialVehicleCategory?: string;
   initialAutoSearch?: boolean;
+  forceOpenMobilePopup?: boolean;
+  onCloseMobilePopup?: () => void;
   onSearchRoute?: (data: { tripType: TripType; pickupCity: string; dropCity: string; dropAddress: string }) => void;
   onBookingConfirmed: (booking: Booking) => void;
   language?: 'en' | 'hi';
@@ -49,6 +51,8 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   initialTo = '',
   initialVehicleCategory,
   initialAutoSearch = false,
+  forceOpenMobilePopup = false,
+  onCloseMobilePopup,
   onSearchRoute,
   onBookingConfirmed,
   language = 'en',
@@ -56,7 +60,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   isModal = false,
   onCloseModal,
 }) => {
-  const isLight = theme === 'light';
+  const isLight = theme === 'light' || (typeof document !== 'undefined' && document.documentElement.classList.contains('light'));
 
   // Trip Selection state
   const [tripType, setTripType] = useState<TripType>(initialTripType);
@@ -70,12 +74,27 @@ export const BookingForm: React.FC<BookingFormProps> = ({
 
   // Mobile Popup Elevation: on mobile (<768px), card appears elevated as a popup on initial open
   const [isMobilePopup, setIsMobilePopup] = useState<boolean>(() => {
+    if (forceOpenMobilePopup) return true;
     if (typeof window === 'undefined') return false;
     return window.innerWidth < 768;
   });
 
+  // Listen for forceOpenMobilePopup from parent
+  useEffect(() => {
+    if (forceOpenMobilePopup) {
+      setIsMobilePopup(true);
+      setTripType('oneway');
+      setPickupCity('');
+      setDropCity('');
+      setPickupAddress('');
+      setDropAddress('');
+      setFormErrors({});
+    }
+  }, [forceOpenMobilePopup]);
+
   const handleDismissMobilePopup = () => {
     setIsMobilePopup(false);
+    if (onCloseMobilePopup) onCloseMobilePopup();
     if (onCloseModal) onCloseModal();
   };
 
@@ -99,6 +118,9 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   const [fromSuggestionsOpen, setFromSuggestionsOpen] = useState(false);
   const [toSuggestionsOpen, setToSuggestionsOpen] = useState(false);
   const cabsSectionRef = useRef<HTMLDivElement>(null);
+  const formCardRef = useRef<HTMLDivElement>(null);
+  const pickupInputRef = useRef<HTMLInputElement>(null);
+  const dropInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll to all cars if initialAutoSearch is requested
   useEffect(() => {
@@ -175,18 +197,57 @@ export const BookingForm: React.FC<BookingFormProps> = ({
     const temp = pickupCity;
     setPickupCity(dropCity);
     setDropCity(temp);
+    setFormErrors({});
+  };
+
+  // Validation function: ensures both are filled and gives hint, detects single city
+  const validateInputs = (): boolean => {
+    const errors: { [key: string]: string } = {};
+
+    if (!pickupCity || !pickupCity.trim()) {
+      errors.pickupCity = language === 'en' ? 'Please enter Origin (From) city' : 'कृपया पिकअप शहर (From) भरें';
+    }
+
+    if ((tripType === 'oneway' || tripType === 'roundtrip') && (!dropCity || !dropCity.trim())) {
+      errors.dropCity = language === 'en' ? 'Please enter Destination (To) city' : 'कृपया ड्राप शहर (To) भरें';
+    }
+
+    // Single City Detection: If user typed the exact same city in From & To
+    if (
+      (tripType === 'oneway' || tripType === 'roundtrip') &&
+      pickupCity &&
+      dropCity &&
+      pickupCity.trim().length > 0 &&
+      dropCity.trim().length > 0 &&
+      pickupCity.trim().toLowerCase() === dropCity.trim().toLowerCase()
+    ) {
+      errors.singleCity = language === 'en'
+        ? `Both cities are "${pickupCity}". For travel within a single city, please use 'Local Hourly Rental'.`
+        : `दोनों शहर एक ही हैं ("${pickupCity}")! यदि आपको एक ही शहर में घूमना है, तो 'Local Hourly' (लोकल ऑवरली) पैकेज चुनें।`;
+    }
+
+    if (tripType === 'local' && (!pickupCity || !pickupCity.trim())) {
+      errors.pickupCity = language === 'en' ? 'Please enter City' : 'कृपया शहर का नाम भरें';
+    }
+
+    setFormErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      if (errors.pickupCity) {
+        pickupInputRef.current?.focus();
+      } else if (errors.dropCity) {
+        dropInputRef.current?.focus();
+      }
+      return false;
+    }
+
+    return true;
   };
 
   // Search Action
   const handleSearchCars = () => {
-    if (!pickupCity.trim()) {
-      setFormErrors(prev => ({ ...prev, pickupCity: 'Please enter origin city' }));
-      return;
-    }
-    if (tripType === 'oneway' && !dropCity.trim()) {
-      setFormErrors(prev => ({ ...prev, dropCity: 'Please enter destination city' }));
-      return;
-    }
+    if (!validateInputs()) return;
+
     setFormErrors({});
     if (onSearchRoute) {
       setIsMobilePopup(false);
@@ -204,10 +265,10 @@ export const BookingForm: React.FC<BookingFormProps> = ({
     }, 150);
   };
 
-  // Open Reservation popup directly with loading animation
+  // Open Reservation popup directly with loading animation - strictly checks inputs
   const handleOpenQuickModal = (vehicle: Vehicle) => {
-    if (!hasSearched) {
-      window.scrollTo({ top: 120, behavior: 'smooth' });
+    if (!validateInputs()) {
+      formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     setSelectedVehicle(vehicle);
@@ -248,7 +309,9 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   ];
 
   const renderFormCard = (inPopup: boolean = false) => (
-    <div className={`relative max-w-4xl mx-auto rounded-2xl sm:rounded-3xl border shadow-xl ${
+    <div 
+      ref={!inPopup ? formCardRef : undefined}
+      className={`relative max-w-4xl mx-auto rounded-2xl sm:rounded-3xl border shadow-xl ${
       inPopup ? 'p-3 sm:p-4' : 'p-3.5 sm:p-5 md:p-6'
     } transition-all ${
       isLight
@@ -421,7 +484,14 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                   value={pickupCity}
                   onChange={(e) => setPickupCity(e.target.value)}
                   placeholder="e.g. Varanasi, Lucknow"
-                  className="w-full bg-transparent text-sm sm:text-base font-semibold placeholder:text-[11px] sm:placeholder:text-xs placeholder:font-normal placeholder:text-slate-400/60 dark:placeholder:text-slate-500/60 focus:outline-none"
+                  style={{
+                    color: isLight ? '#020617' : '#FFFFFF',
+                    WebkitTextFillColor: pickupCity ? (isLight ? '#020617' : '#FFFFFF') : undefined,
+                    backgroundColor: 'transparent'
+                  }}
+                  className={`w-full bg-transparent text-sm sm:text-base font-black placeholder:font-normal placeholder:opacity-40 ${
+                    isLight ? 'text-slate-950 placeholder:text-slate-400' : 'text-white placeholder:text-slate-500'
+                  } focus:outline-none caret-amber-500`}
                 />
               </div>
 
@@ -440,7 +510,14 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                   value={dropAddress}
                   onChange={(e) => setDropAddress(e.target.value)}
                   placeholder="e.g. Kashi Vishwanath Temple or Hotel"
-                  className="w-full bg-transparent text-sm sm:text-base font-semibold placeholder:text-[11px] sm:placeholder:text-xs placeholder:font-normal placeholder:text-slate-400/60 dark:placeholder:text-slate-500/60 focus:outline-none"
+                  style={{
+                    color: isLight ? '#020617' : '#FFFFFF',
+                    WebkitTextFillColor: dropAddress ? (isLight ? '#020617' : '#FFFFFF') : undefined,
+                    backgroundColor: 'transparent'
+                  }}
+                  className={`w-full bg-transparent text-sm sm:text-base font-black placeholder:font-normal placeholder:opacity-40 ${
+                    isLight ? 'text-slate-950 placeholder:text-slate-400' : 'text-white placeholder:text-slate-500'
+                  } focus:outline-none caret-emerald-500`}
                 />
               </div>
             </div>
@@ -495,43 +572,67 @@ export const BookingForm: React.FC<BookingFormProps> = ({
           <div className="space-y-2 sm:space-y-3">
             {/* ROW 1: FROM AND TO CITIES WITH SWAP */}
             <div className={`flex flex-col md:flex-row items-stretch md:items-center ${
-              inPopup ? 'gap-1.5' : 'gap-2 sm:gap-3'
+              inPopup ? 'gap-2' : 'gap-2 sm:gap-3'
             } relative`}>
               {/* From City Box with Dynamic Floating Autocomplete */}
               <div className="flex-1 relative">
                 <div className={`${
-                  inPopup ? 'px-2.5 py-1.5 rounded-xl' : 'px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl sm:rounded-2xl'
-                } border transition-all ${
-                  isLight
-                    ? 'bg-slate-50 border-slate-300 focus-within:border-amber-500 focus-within:bg-white focus-within:shadow-md'
-                    : 'bg-[#070B14] border-slate-800 focus-within:border-amber-500 focus-within:bg-[#0B1120]'
+                  inPopup ? 'px-3 py-2 rounded-xl min-h-[56px]' : 'px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl sm:rounded-2xl min-h-[60px]'
+                } border transition-all flex flex-col justify-center ${
+                  formErrors.pickupCity
+                    ? 'border-red-500 ring-2 ring-red-500/40 bg-red-50/50 dark:bg-red-950/20'
+                    : isLight
+                      ? 'bg-slate-50 border-slate-300 focus-within:border-amber-500 focus-within:bg-white focus-within:shadow-md'
+                      : 'bg-[#070B14] border-slate-800 focus-within:border-amber-500 focus-within:bg-[#0B1120]'
                 }`}>
-                  <label className={`${
-                    inPopup ? 'text-[10px] mb-0' : 'text-[11px] mb-0.5'
-                  } font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1`}>
+                  <label className="text-[10px] sm:text-[11px] font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1 mb-0.5">
                     <MapPin className="w-3 h-3 stroke-[2.5]" />
-                    <span>From</span>
+                    <span>From (Origin)</span>
                   </label>
-                  <input
-                    type="text"
-                    value={pickupCity}
-                    onChange={(e) => {
-                      setPickupCity(e.target.value);
-                      setFromSuggestionsOpen(true);
-                    }}
-                    onFocus={() => setFromSuggestionsOpen(true)}
-                    onBlur={() => setTimeout(() => setFromSuggestionsOpen(false), 200)}
-                    placeholder="e.g. Varanasi, Lucknow"
-                    className={`w-full bg-transparent ${
-                      inPopup ? 'text-xs sm:text-sm font-semibold' : 'text-sm sm:text-base font-semibold'
-                    } placeholder:text-[11px] sm:placeholder:text-xs placeholder:font-normal placeholder:text-slate-400/60 dark:placeholder:text-slate-500/60 focus:outline-none`}
-                  />
+                  <div className="flex items-center gap-1 w-full">
+                    <input
+                      ref={pickupInputRef}
+                      type="text"
+                      value={pickupCity}
+                      onChange={(e) => {
+                        setPickupCity(e.target.value);
+                        setFromSuggestionsOpen(true);
+                        if (formErrors.pickupCity) {
+                          setFormErrors(prev => ({ ...prev, pickupCity: '', singleCity: '' }));
+                        }
+                      }}
+                      onFocus={() => setFromSuggestionsOpen(true)}
+                      onBlur={() => setTimeout(() => setFromSuggestionsOpen(false), 200)}
+                      placeholder="e.g. Varanasi, Lucknow"
+                      style={{
+                        color: isLight ? '#020617' : '#FFFFFF',
+                        WebkitTextFillColor: pickupCity ? (isLight ? '#020617' : '#FFFFFF') : undefined,
+                        backgroundColor: 'transparent'
+                      }}
+                      className={`w-full bg-transparent text-[16px] sm:text-base font-black placeholder:font-normal placeholder:opacity-40 ${
+                        isLight ? 'text-slate-950 placeholder:text-slate-400' : 'text-white placeholder:text-slate-500'
+                      } focus:outline-none leading-normal caret-amber-500`}
+                    />
+                    {pickupCity.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPickupCity('');
+                          pickupInputRef.current?.focus();
+                        }}
+                        className="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                        title="Clear"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Dynamic Floating Suggestions Dropdown */}
                 {fromSuggestionsOpen && filteredFromSuggestions.length > 0 && (
-                  <div className={`absolute left-0 right-0 top-full mt-1.5 z-40 rounded-xl border shadow-xl overflow-hidden py-1 max-h-52 overflow-y-auto ${
-                    isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#0F172A] border-slate-700 text-white'
+                  <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-xl border shadow-2xl overflow-hidden py-1 max-h-52 overflow-y-auto ${
+                    isLight ? 'bg-white border-slate-200 text-slate-900 shadow-slate-300' : 'bg-[#0F172A] border-slate-700 text-white'
                   }`}>
                     {filteredFromSuggestions.map((c) => (
                       <button
@@ -540,29 +641,40 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                         onMouseDown={() => {
                           setPickupCity(c);
                           setFromSuggestionsOpen(false);
+                          if (formErrors.pickupCity) {
+                            setFormErrors(prev => ({ ...prev, pickupCity: '', singleCity: '' }));
+                          }
                         }}
-                        className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
-                          isLight ? 'hover:bg-amber-50 hover:text-amber-700' : 'hover:bg-slate-800 hover:text-amber-400'
+                        style={{
+                          color: isLight ? '#090D16' : '#FFFFFF',
+                          WebkitTextFillColor: isLight ? '#090D16' : '#FFFFFF'
+                        }}
+                        className={`w-full text-left px-3.5 py-2.5 text-xs font-bold flex items-center justify-between transition-colors ${
+                          isLight ? 'hover:bg-amber-50 hover:text-amber-700 text-slate-950' : 'hover:bg-slate-800 hover:text-amber-400 text-white'
                         }`}
                       >
                         <span>{c}</span>
-                        <span className="text-[10px] text-slate-400">Select</span>
+                        <span className="text-[10px] text-amber-500 font-bold">Select</span>
                       </button>
                     ))}
                   </div>
                 )}
-                {formErrors.pickupCity && <p className="text-red-500 text-xs font-semibold mt-1">{formErrors.pickupCity}</p>}
+                {formErrors.pickupCity && (
+                  <p className="text-red-500 text-xs font-bold mt-1 flex items-center gap-1 animate-in fade-in duration-150">
+                    <span>⚠️ {formErrors.pickupCity}</span>
+                  </p>
+                )}
               </div>
 
               {/* Swap Button: Vertical arrows on mobile, horizontal on desktop */}
               <div className={`flex items-center justify-center shrink-0 ${
-                inPopup ? '-my-1.5' : '-my-2 md:my-0'
+                inPopup ? '-my-1' : '-my-1.5 md:my-0'
               } z-10 mx-auto md:mx-0`}>
                 <button
                   type="button"
                   onClick={handleSwapLocations}
                   className={`${
-                    inPopup ? 'w-7 h-7 sm:w-8 sm:h-8' : 'w-9 h-9 sm:w-10 sm:h-10'
+                    inPopup ? 'w-8 h-8' : 'w-9 h-9 sm:w-10 sm:h-10'
                   } rounded-full btn-gold flex items-center justify-center shadow-md cursor-pointer transition-all hover:rotate-180 border-2 border-white dark:border-[#0B1120]`}
                   title="Swap Origin & Destination"
                 >
@@ -574,38 +686,62 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               {/* To City Box with Dynamic Floating Autocomplete */}
               <div className="flex-1 relative">
                 <div className={`${
-                  inPopup ? 'px-2.5 py-1.5 rounded-xl' : 'px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl sm:rounded-2xl'
-                } border transition-all ${
-                  isLight
-                    ? 'bg-slate-50 border-slate-300 focus-within:border-emerald-600 focus-within:bg-white focus-within:shadow-md'
-                    : 'bg-[#070B14] border-slate-800 focus-within:border-emerald-500 focus-within:bg-[#0B1120]'
+                  inPopup ? 'px-3 py-2 rounded-xl min-h-[56px]' : 'px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl sm:rounded-2xl min-h-[60px]'
+                } border transition-all flex flex-col justify-center ${
+                  formErrors.dropCity
+                    ? 'border-red-500 ring-2 ring-red-500/40 bg-red-50/50 dark:bg-red-950/20'
+                    : isLight
+                      ? 'bg-slate-50 border-slate-300 focus-within:border-emerald-600 focus-within:bg-white focus-within:shadow-md'
+                      : 'bg-[#070B14] border-slate-800 focus-within:border-emerald-500 focus-within:bg-[#0B1120]'
                 }`}>
-                  <label className={`${
-                    inPopup ? 'text-[10px] mb-0' : 'text-[11px] mb-0.5'
-                  } font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-1`}>
+                  <label className="text-[10px] sm:text-[11px] font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-1 mb-0.5">
                     <MapPin className="w-3 h-3 stroke-[2.5]" />
-                    <span>To</span>
+                    <span>To (Destination)</span>
                   </label>
-                  <input
-                    type="text"
-                    value={dropCity}
-                    onChange={(e) => {
-                      setDropCity(e.target.value);
-                      setToSuggestionsOpen(true);
-                    }}
-                    onFocus={() => setToSuggestionsOpen(true)}
-                    onBlur={() => setTimeout(() => setToSuggestionsOpen(false), 200)}
-                    placeholder="e.g. Ayodhya, Prayagraj"
-                    className={`w-full bg-transparent ${
-                      inPopup ? 'text-xs sm:text-sm font-semibold' : 'text-sm sm:text-base font-semibold'
-                    } placeholder:text-[11px] sm:placeholder:text-xs placeholder:font-normal placeholder:text-slate-400/60 dark:placeholder:text-slate-500/60 focus:outline-none`}
-                  />
+                  <div className="flex items-center gap-1 w-full">
+                    <input
+                      ref={dropInputRef}
+                      type="text"
+                      value={dropCity}
+                      onChange={(e) => {
+                        setDropCity(e.target.value);
+                        setToSuggestionsOpen(true);
+                        if (formErrors.dropCity) {
+                          setFormErrors(prev => ({ ...prev, dropCity: '', singleCity: '' }));
+                        }
+                      }}
+                      onFocus={() => setToSuggestionsOpen(true)}
+                      onBlur={() => setTimeout(() => setToSuggestionsOpen(false), 200)}
+                      placeholder="e.g. Ayodhya, Prayagraj"
+                      style={{
+                        color: isLight ? '#020617' : '#FFFFFF',
+                        WebkitTextFillColor: dropCity ? (isLight ? '#020617' : '#FFFFFF') : undefined,
+                        backgroundColor: 'transparent'
+                      }}
+                      className={`w-full bg-transparent text-[16px] sm:text-base font-black placeholder:font-normal placeholder:opacity-40 ${
+                        isLight ? 'text-slate-950 placeholder:text-slate-400' : 'text-white placeholder:text-slate-500'
+                      } focus:outline-none leading-normal caret-emerald-500`}
+                    />
+                    {dropCity.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDropCity('');
+                          dropInputRef.current?.focus();
+                        }}
+                        className="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                        title="Clear"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Dynamic Floating Suggestions Dropdown */}
                 {toSuggestionsOpen && filteredToSuggestions.length > 0 && (
-                  <div className={`absolute left-0 right-0 top-full mt-1.5 z-40 rounded-xl border shadow-xl overflow-hidden py-1 max-h-52 overflow-y-auto ${
-                    isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#0F172A] border-slate-700 text-white'
+                  <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-xl border shadow-2xl overflow-hidden py-1 max-h-52 overflow-y-auto ${
+                    isLight ? 'bg-white border-slate-200 text-slate-900 shadow-slate-300' : 'bg-[#0F172A] border-slate-700 text-white'
                   }`}>
                     {filteredToSuggestions.map((c) => (
                       <button
@@ -614,20 +750,63 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                         onMouseDown={() => {
                           setDropCity(c);
                           setToSuggestionsOpen(false);
+                          if (formErrors.dropCity) {
+                            setFormErrors(prev => ({ ...prev, dropCity: '', singleCity: '' }));
+                          }
                         }}
-                        className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
-                          isLight ? 'hover:bg-amber-50 hover:text-amber-700' : 'hover:bg-slate-800 hover:text-amber-400'
+                        style={{
+                          color: isLight ? '#090D16' : '#FFFFFF',
+                          WebkitTextFillColor: isLight ? '#090D16' : '#FFFFFF'
+                        }}
+                        className={`w-full text-left px-3.5 py-2.5 text-xs font-bold flex items-center justify-between transition-colors ${
+                          isLight ? 'hover:bg-amber-50 hover:text-amber-700 text-slate-950' : 'hover:bg-slate-800 hover:text-amber-400 text-white'
                         }`}
                       >
                         <span>{c}</span>
-                        <span className="text-[10px] text-slate-400">Select</span>
+                        <span className="text-[10px] text-emerald-500 font-bold">Select</span>
                       </button>
                     ))}
                   </div>
                 )}
-                {formErrors.dropCity && <p className="text-red-500 text-xs font-semibold mt-1">{formErrors.dropCity}</p>}
+                {formErrors.dropCity && (
+                  <p className="text-red-500 text-xs font-bold mt-1 flex items-center gap-1 animate-in fade-in duration-150">
+                    <span>⚠️ {formErrors.dropCity}</span>
+                  </p>
+                )}
               </div>
             </div>
+
+            {/* SINGLE CITY TRAVEL DETECTION & LOCAL HOURLY RECOMMENDATION */}
+            {formErrors.singleCity && (
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/50 text-amber-950 dark:text-amber-200 text-xs animate-in zoom-in-95 shadow-md">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-7 h-7 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-xs font-black">
+                    <Sparkles className="w-4 h-4 stroke-[2.5]" />
+                  </div>
+                  <div className="flex-1 space-y-1.5">
+                    <strong className="block text-xs sm:text-sm font-black text-amber-600 dark:text-amber-400">
+                      {language === 'en' ? 'Single City Travel Detected!' : 'एक ही शहर (Single City) चुना गया है!'}
+                    </strong>
+                    <p className="text-[11.5px] leading-relaxed text-slate-700 dark:text-slate-300">
+                      {formErrors.singleCity}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTripType('local');
+                        setDropAddress('');
+                        setFormErrors({});
+                      }}
+                      className="mt-1 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md cursor-pointer active:scale-95 transition-all"
+                    >
+                      <Car className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>{language === 'en' ? 'Switch to Local Hourly Rental' : 'लोकल ऑवरली रेंटल पर जाएं (Local Hourly)'}</span>
+                      <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ROW 2: DATE & TIME SELECTOR (BEFORE SEARCH BUTTON) */}
             {tripType === 'roundtrip' ? (
@@ -754,7 +933,11 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               }`}>
                 <div className="flex items-center gap-1.5 font-semibold">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span>{pickupCity} {tripType === 'roundtrip' ? '⇄' : '→'} {dropCity}</span>
+                  <span>
+                    <strong className="text-amber-500 font-black">{pickupCity}</strong>{' '}
+                    <span className="opacity-70">{tripType === 'roundtrip' ? '⇄' : '→'}</span>{' '}
+                    <strong className="text-emerald-500 font-black">{dropCity}</strong>
+                  </span>
                   <span className="text-amber-500 font-mono font-bold">(~{fareResult.estimatedDistanceKm} KM)</span>
                 </div>
                 <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-[10px] sm:text-xs">
@@ -801,17 +984,17 @@ export const BookingForm: React.FC<BookingFormProps> = ({
 
   return (
     <div className="w-full relative">
-      {/* MOBILE POPUP MODAL (Perfect center, snug fit, blurred background, no gold border) */}
+      {/* MOBILE POPUP MODAL (Positioned from top so virtual keyboard never hides inputs) */}
       {isMobilePopup && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md md:hidden animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2.5 sm:p-4 pt-3 sm:pt-6 pb-20 bg-black/85 backdrop-blur-md md:hidden animate-in fade-in duration-200 overflow-y-auto overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleDismissMobilePopup();
             }
           }}
         >
-          <div className="relative w-full max-w-[390px] mx-auto my-auto animate-in zoom-in-95 duration-150">
+          <div className="relative w-full max-w-[400px] mx-auto my-0 animate-in zoom-in-95 duration-150">
             {/* Clean Neutral Close Cross Button on Top-Right Corner */}
             <button
               type="button"
@@ -874,13 +1057,13 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               <span>
                 {hasSearched
                   ? `Available Cabs for ${pickupCity} → ${tripType === 'local' ? (dropAddress || 'Local City') : dropCity}`
-                  : (language === 'en' ? 'Our Commercial Chauffeur Fleet' : 'हमारी उपलब्ध कमर्शियल गाड़ियां')}
+                  : (language === 'en' ? 'Our cars' : 'हमारी गाड़ियां (Our cars)')}
               </span>
             </h3>
             <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-              {hasSearched
-                ? (language === 'en' ? 'Click "Select" on any cab to open the quick reservation popup.' : 'किसी भी गाड़ी पर "Select" दबाकर तुरंत बुकिंग करें।')
-                : (language === 'en' ? 'Enter destination & click "Search Cabs" above to see exact fares & reserve.' : 'किराया देखने और गाड़ी चुनने के लिए ऊपर गंतव्य डालकर Search Cabs दबाएं।')}
+              {language === 'en'
+                ? 'Explore our verified fleet with senior chauffeurs & AC guaranteed.'
+                : 'सत्यापित गाड़ियों का बेड़ा, वरिष्ठ ड्राइवर व पूर्णतः वातानुकूलित (AC)।'}
             </p>
           </div>
 
@@ -888,7 +1071,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
             isLight ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
           }`}>
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
-            <span>{hasSearched ? 'All-Inclusive Tariffs' : 'Verified Fleet'}</span>
+            <span>Verified Fleet</span>
           </span>
         </div>
 
@@ -896,16 +1079,6 @@ export const BookingForm: React.FC<BookingFormProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {displayedVehicles.map((v, idx) => {
             const isSelected = selectedVehicle.id === v.id;
-            const carFare = calculateFare(
-              v,
-              tripType,
-              pickupCity,
-              dropCity,
-              localPackage,
-              tripType === 'roundtrip',
-              returnDate,
-              pickupDate
-            );
 
             // Responsive car display: On mobile 2 cars, on PC 3 cars until showAllCars is clicked
             const responsiveDisplay = showAllCars
@@ -991,18 +1164,17 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                   </div>
                 </div>
 
-                {/* Clean Feature Strip - Only Car Specs & Verified Quality (No Price & No Check Live Price Button) */}
-                <div className={`py-2 px-3.5 sm:px-4 border-t flex items-center justify-between text-[11px] ${
-                  isLight ? 'bg-slate-50 border-slate-200 text-slate-600' : 'bg-[#04070F] border-slate-800 text-slate-400'
+                {/* Fleet Showcase Specs Strip (Display / Showcase Only - Zero Button) */}
+                <div className={`px-4 py-3 border-t flex items-center justify-between text-xs ${
+                  isLight ? 'bg-slate-50/70 border-slate-200' : 'bg-[#04070F] border-slate-800'
                 }`}>
-                  <div className="flex items-center gap-1 text-amber-500 font-medium">
-                    <Sparkles className="w-3 h-3 shrink-0" />
+                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold text-[11px]">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                     <span>{language === 'en' ? 'Tolls & Fuel Included' : 'टोल व ईंधन शामिल'}</span>
                   </div>
-                  <div className="flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                    <span>100% Inspected Fleet</span>
-                  </div>
+                  <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">
+                    {language === 'en' ? 'Verified Fleet' : 'सत्यापित बेड़ा'}
+                  </span>
                 </div>
               </div>
             );
