@@ -100,12 +100,12 @@ export const Header: React.FC<HeaderProps> = ({
             <Car className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-0.5 sm:gap-1 leading-none">
+            <div className="flex items-center gap-0.5 leading-none">
               <span className={`text-lg sm:text-2xl font-black tracking-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>
-                Travel
+                traveling
               </span>
               <span className="text-lg sm:text-2xl font-black tracking-tight bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent">
-                Cap
+                cab
               </span>
             </div>
             <p className={`text-[8.5px] sm:text-[10px] font-black tracking-wider sm:tracking-widest uppercase truncate mt-0.5 ${

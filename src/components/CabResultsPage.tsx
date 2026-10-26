@@ -52,9 +52,15 @@ export const CabResultsPage: React.FC<CabResultsPageProps> = ({
   const isLight = theme === 'light';
 
   // Active cities & trip type (can toggle One-Way / Round-Trip in Blue on results page too)
-  const [pickupCity] = useState(initialPickupCity || 'Varanasi');
-  const [dropCity] = useState(initialDropCity || 'Ayodhya');
+  const [pickupCity, setPickupCity] = useState(initialPickupCity || 'Varanasi');
+  const [dropCity, setDropCity] = useState(initialDropCity || 'Ayodhya');
   const [tripType, setTripType] = useState<TripType>(initialTripType || 'oneway');
+
+  React.useEffect(() => {
+    if (initialPickupCity) setPickupCity(initialPickupCity);
+    if (initialDropCity) setDropCity(initialDropCity);
+    if (initialTripType) setTripType(initialTripType);
+  }, [initialPickupCity, initialDropCity, initialTripType]);
 
   // Filter category: 'all' | 'sedan' | 'suv' | 'luxury' | 'tempo'
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -92,13 +98,7 @@ export const CabResultsPage: React.FC<CabResultsPageProps> = ({
 
   const handleSelectVehicleToBook = (v: Vehicle) => {
     setSelectedVehicle(v);
-    setLoadingCarName(v.name);
-    setIsCarLoading(true);
-
-    setTimeout(() => {
-      setIsCarLoading(false);
-      setShowQuickModal(true);
-    }, 350);
+    setShowQuickModal(true);
   };
 
   // Automatically scroll down directly to available cars section
@@ -185,14 +185,6 @@ export const CabResultsPage: React.FC<CabResultsPageProps> = ({
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
             <span>Zero Advance · Pay During Trip</span>
           </span>
-
-          <a
-            href="tel:7080224963"
-            className="btn-gold hidden md:flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold"
-          >
-            <Phone className="w-3.5 h-3.5 stroke-[3]" />
-            <span>7080224963</span>
-          </a>
         </div>
       </div>
 
@@ -210,8 +202,8 @@ export const CabResultsPage: React.FC<CabResultsPageProps> = ({
                 {tripType === 'local'
                   ? 'Local Chauffeur Ride'
                   : tripType === 'roundtrip'
-                    ? 'Outstation Round Trip Special Offer'
-                    : 'Outstation One-Way Special Discount'}
+                    ? 'Outstation Round Trip Tariff'
+                    : 'Outstation One-Way Tariff'}
               </span>
             </div>
 
@@ -229,7 +221,7 @@ export const CabResultsPage: React.FC<CabResultsPageProps> = ({
 
             <p className={`text-xs mt-1.5 font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               Estimated Distance: <strong className="text-amber-500 font-mono">~{sampleFare.estimatedDistanceKm} KM</strong> · 
-              Special Online Discount Applied (₹200–₹300 OFF) · Clean AC Fleet
+              Clean Commercial AC Fleet · Verified Chauffeurs
             </p>
           </div>
 
@@ -244,14 +236,14 @@ export const CabResultsPage: React.FC<CabResultsPageProps> = ({
         </div>
       </div>
 
-      {/* Vehicle Category Filter Pills */}
+      {/* Vehicle Category Filter Pills (Clean Category Labels without OFF tags) */}
       <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-4 no-scrollbar">
         {[
           { id: 'all', label: `All Cabs (${VEHICLES.length})` },
-          { id: 'sedan', label: 'Sedans (₹200 OFF)' },
-          { id: 'suv', label: 'SUVs (₹300 OFF)' },
-          { id: 'luxury', label: 'Innova Crysta (₹300 OFF)' },
-          { id: 'tempo', label: 'Tempo Traveller (₹300 OFF)' },
+          { id: 'sedan', label: 'Sedans' },
+          { id: 'suv', label: 'SUVs' },
+          { id: 'luxury', label: 'Innova Crysta' },
+          { id: 'tempo', label: 'Tempo Traveller' },
         ].map((f) => (
           <button
             key={f.id}
@@ -278,7 +270,7 @@ export const CabResultsPage: React.FC<CabResultsPageProps> = ({
             {language === 'en' ? 'Select Your Cab' : 'अपनी कैब चुनें'}
           </h2>
           <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
-            ({filteredVehicles.length} {language === 'en' ? 'Cabs with Instant Discount' : 'गाड़ियां उपलब्ध'})
+            ({filteredVehicles.length} {language === 'en' ? 'Available Cabs' : 'गाड़ियां उपलब्ध'})
           </span>
         </div>
         <div className="flex items-center gap-1 text-xs font-bold text-amber-500">
@@ -406,31 +398,26 @@ export const CabResultsPage: React.FC<CabResultsPageProps> = ({
                   </div>
                 </div>
 
-                {/* Promotional Strikethrough Discount Price + Taxes & Charges + Book Cab Button */}
+                {/* Total Price with Discount Applied + Taxes & Charges + Book Cab Button (No outer OFF badges) */}
                 <div className="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-end justify-between gap-2 sm:gap-3">
                   <div className="min-w-0">
-                    {/* Strikethrough Original Price & Discount Tag */}
-                    <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                      <span className="text-[11px] sm:text-xs font-mono font-bold text-slate-400 dark:text-slate-500 line-through decoration-rose-500 decoration-2">
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className="text-[11px] sm:text-xs font-bold font-mono line-through text-slate-400 decoration-rose-500">
                         ₹{promo.originalDisplayPrice.toLocaleString('en-IN')}
                       </span>
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[9px] sm:text-[10px] font-black uppercase tracking-wide">
-                        ₹{promo.carDiscount} OFF
-                      </span>
-                    </div>
-
-                    {/* Discounted Offer Price Badge */}
-                    <div className="flex items-baseline gap-1.5 flex-wrap">
                       <span className="price-badge-chatkar px-2.5 py-0.5 rounded-lg text-xs sm:text-sm inline-flex items-center shrink-0">
                         ₹{promo.upfrontOfferPrice.toLocaleString('en-IN')}
                       </span>
                     </div>
 
-                    {/* + Taxes & Charges Note */}
-                    <div className={`text-[9.5px] sm:text-[10.5px] font-bold mt-0.5 flex items-center gap-1 ${
+                    {/* + Taxes & Charges + Discount Applied Note */}
+                    <div className={`text-[9.5px] sm:text-[10.5px] font-bold mt-0.5 flex items-center gap-1.5 flex-wrap ${
                       isLight ? 'text-blue-700' : 'text-blue-400'
                     }`}>
                       <span>+ ₹{promo.taxAndCharges} Taxes &amp; Charges</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                        (Discount -₹{promo.carDiscount})
+                      </span>
                     </div>
                   </div>
 

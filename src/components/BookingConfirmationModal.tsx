@@ -51,7 +51,7 @@ export const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> =
       const trackUrl = typeof window !== 'undefined' ? `${window.location.origin}/?track=${booking.bookingId}` : '';
       const vehicleName = booking.vehicle?.name || 'Commercial AC Cab';
       const payLabel = booking.paymentPreference === 'online_pay' ? 'Online Pay (UPI)' : 'Cash in Hand';
-      const nativeSmsText = `[TravelCap] Dear ${booking.passengerName || 'Customer'}, your TravelCap Cab reservation is CONFIRMED. Track ID: ${booking.bookingId}. Route: ${booking.pickupCity || 'Varanasi'} -> ${booking.dropCity || 'Local'}. Date: ${booking.pickupDate || ''} at ${booking.pickupTime || ''}. Cab: ${vehicleName}. Fare: Rs ${booking.totalFare || 0} (${payLabel}). Live Track: ${trackUrl}. Helpline: 7080224963`;
+      const nativeSmsText = `[travelingcab] Dear ${booking.passengerName || 'Customer'}, your travelingcab Cab reservation is CONFIRMED. Track ID: ${booking.bookingId}. Route: ${booking.pickupCity || 'Varanasi'} -> ${booking.dropCity || 'Local'}. Date: ${booking.pickupDate || ''} at ${booking.pickupTime || ''}. Cab: ${vehicleName}. Fare: Rs ${booking.totalFare || 0} (${payLabel}). Live Track: ${trackUrl}. Helpline: 7080224963`;
 
       // 1. Mobile Phone Vibration (Free native mobile feedback)
       try {
@@ -64,13 +64,13 @@ export const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> =
       try {
         if (typeof window !== 'undefined' && 'Notification' in window) {
           if (Notification.permission === 'granted') {
-            new Notification(`TravelCap Confirmed · Track ID: ${booking.bookingId}`, {
+            new Notification(`travelingcab Confirmed · Track ID: ${booking.bookingId}`, {
               body: `${booking.pickupCity} → ${booking.dropCity || 'Local'} on ${booking.pickupDate}. Total: ₹${booking.totalFare}`,
             });
           } else if (Notification.permission !== 'denied') {
             Notification.requestPermission().then((perm) => {
               if (perm === 'granted') {
-                new Notification(`TravelCap Confirmed · Track ID: ${booking.bookingId}`, {
+                new Notification(`travelingcab Confirmed · Track ID: ${booking.bookingId}`, {
                   body: `${booking.pickupCity} → ${booking.dropCity || 'Local'} on ${booking.pickupDate}. Total: ₹${booking.totalFare}`,
                 });
               }
@@ -116,9 +116,9 @@ export const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> =
     ? `Online Pay (₹${booking.totalFare || 0} via UPI)`
     : `Cash in Hand (Pay ₹0 Now · Pay ₹${booking.totalFare || 0} Later Cash/Online)`;
 
-  const confirmationMessageText = `🚕 *TRAVELCAP RESERVATION CONFIRMED* 🚕
+  const confirmationMessageText = `🚕 *TRAVELINGCAB RESERVATION CONFIRMED* 🚕
 ━━━━━━━━━━━━━━━━━━━━━
-🏷️ *Brand:* TravelCap
+🏷️ *Brand:* travelingcab
 📋 *Track ID (Booking PNR):* ${booking.bookingId}
 👤 *Passenger:* ${booking.passengerName || 'Valued Guest'}
 📱 *Phone:* ${booking.passengerPhone || cleanPhone}
@@ -132,11 +132,11 @@ ${hasRealEmail ? `📧 *Verified Email:* ${rawEmail}\n` : ''}📍 *Route:* ${boo
 ━━━━━━━━━━━━━━━━━━━━━
 ✅ *Status:* Confirmed (Live Updates Active)
 📞 *24/7 Helpline:* ${COMPANY_PHONE}
-TravelCap - Clean AC Cabs & Chauffeurs.`;
+travelingcab - Clean AC Cabs & Chauffeurs.`;
 
-  const nativeSmsText = `[TravelCap] Dear ${booking.passengerName || 'Customer'}, your TravelCap Cab is CONFIRMED. Track ID: ${booking.bookingId}. Route: ${booking.pickupCity || 'Varanasi'} -> ${booking.dropCity || 'Local'}. Date: ${booking.pickupDate || ''} at ${booking.pickupTime || ''}. Cab: ${vehicleName}. Fare: Rs ${booking.totalFare || 0} (${paymentModeLabel}). Live Track: ${trackUrl}. Helpline: 7080224963`;
+  const nativeSmsText = `[travelingcab] Dear ${booking.passengerName || 'Customer'}, your travelingcab Cab is CONFIRMED. Track ID: ${booking.bookingId}. Route: ${booking.pickupCity || 'Varanasi'} -> ${booking.dropCity || 'Local'}. Date: ${booking.pickupDate || ''} at ${booking.pickupTime || ''}. Cab: ${vehicleName}. Fare: Rs ${booking.totalFare || 0} (${paymentModeLabel}). Live Track: ${trackUrl}. Helpline: 7080224963`;
   const nativeSmsUrl = `sms:+91${cleanPhone}?body=${encodeURIComponent(nativeSmsText)}`;
-  const mailtoUrl = `mailto:${encodeURIComponent(displayEmail)}?subject=${encodeURIComponent(`TravelCap Booking Confirmed - Track ID: ${booking.bookingId}`)}&body=${encodeURIComponent(confirmationMessageText)}`;
+  const mailtoUrl = `mailto:${encodeURIComponent(displayEmail)}?subject=${encodeURIComponent(`travelingcab Booking Confirmed - Track ID: ${booking.bookingId}`)}&body=${encodeURIComponent(confirmationMessageText)}`;
   const passengerWhatsAppUrl = `https://wa.me/91${cleanPhone}?text=${encodeURIComponent(confirmationMessageText)}`;
   const companyWhatsAppUrl = `https://wa.me/91${COMPANY_WHATSAPP}?text=${encodeURIComponent(confirmationMessageText)}`;
 
@@ -167,7 +167,7 @@ TravelCap - Clean AC Cabs & Chauffeurs.`;
                 {language === 'en' ? 'Reservation Confirmed!' : 'बुकिंग कन्फर्म हो गई है!'}
               </span>
               <span className="text-[10.5px] text-slate-500 dark:text-slate-400">
-                TravelCap · Official Booking Voucher
+                travelingcab · Official Booking Voucher
               </span>
             </div>
           </div>
@@ -193,7 +193,7 @@ TravelCap - Clean AC Cabs & Chauffeurs.`;
             <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2">
               <span className="text-[10.5px] uppercase font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                 <Smartphone className="w-3.5 h-3.5 shrink-0" />
-                <span>{language === 'en' ? 'TravelCap Instant Ticket' : 'TravelCap कन्फर्म टिकट'}</span>
+                <span>{language === 'en' ? 'travelingcab Instant Ticket' : 'travelingcab कन्फर्म टिकट'}</span>
               </span>
               <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                 {emailStatus === 'sent' ? '✓ Email & SMS Sent' : 'Sending Ticket...'}
@@ -205,11 +205,11 @@ TravelCap - Clean AC Cabs & Chauffeurs.`;
               isLight ? 'bg-white border-emerald-200 text-slate-800' : 'bg-[#070D1A] border-emerald-500/30 text-emerald-200'
             }`}>
               <div className="font-bold text-amber-600 dark:text-amber-400 pb-1 mb-1 border-b border-inherit flex items-center justify-between text-[10px]">
-                <span>📲 TRAVELCAP OFFICIAL TICKET</span>
+                <span>📲 TRAVELINGCAB OFFICIAL TICKET</span>
                 <span className="text-emerald-600 dark:text-emerald-400">✓ CONFIRMED</span>
               </div>
               <p className="text-slate-700 dark:text-slate-200 font-sans text-xs">
-                Dear <strong>{booking.passengerName}</strong>, your <strong>TravelCap</strong> Cab is <strong>CONFIRMED</strong>.
+                Dear <strong>{booking.passengerName}</strong>, your <strong>travelingcab</strong> Cab is <strong>CONFIRMED</strong>.
               </p>
               <div className="space-y-0.5 mt-1 pt-1 border-t border-inherit">
                 <p>• <strong>Track ID (Booking ID):</strong> <span className="text-amber-600 dark:text-amber-400 font-bold">{booking.bookingId}</span></p>

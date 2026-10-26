@@ -1,10 +1,67 @@
 import { TripType, Vehicle, Booking } from '../types/cab';
-import { DISTANCE_MATRIX, POPULAR_ROUTES, COMPANY_WHATSAPP, COMPANY_NAME } from '../data/cabsData';
+import { DISTANCE_MATRIX, POPULAR_ROUTES, COMPANY_WHATSAPP, COMPANY_NAME, VEHICLES } from '../data/cabsData';
 import { db, handleFirestoreError, OperationType, withFirestoreTimeout } from '../firebase';
 import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
+export function normalizeBooking(raw: any): Booking | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const bookingId = String(raw.bookingId || '').trim();
+  if (!bookingId) return null;
+
+  let createdAtStr = new Date().toISOString();
+  if (typeof raw.createdAt === 'string' && raw.createdAt.trim()) {
+    createdAtStr = raw.createdAt.trim();
+  } else if (typeof raw.createdAt === 'number') {
+    createdAtStr = new Date(raw.createdAt).toISOString();
+  } else if (raw.createdAt && typeof raw.createdAt.toDate === 'function') {
+    try {
+      createdAtStr = raw.createdAt.toDate().toISOString();
+    } catch {
+      createdAtStr = new Date().toISOString();
+    }
+  }
+
+  const fallbackVehicle = VEHICLES[0];
+  const rawVehicle = raw.vehicle && typeof raw.vehicle === 'object' ? raw.vehicle : fallbackVehicle;
+  const safeVehicle: Vehicle = {
+    ...fallbackVehicle,
+    ...rawVehicle,
+    id: String(rawVehicle?.id || fallbackVehicle.id),
+    name: String(rawVehicle?.name || fallbackVehicle.name),
+    modelNames: String(rawVehicle?.modelNames || fallbackVehicle.modelNames),
+    imageUrl: String(rawVehicle?.imageUrl || fallbackVehicle.imageUrl),
+  };
+
+  const numFare = Number(raw.totalFare);
+  const safeTotalFare = Number.isFinite(numFare) && numFare >= 0 ? numFare : 0;
+
+  return {
+    ...raw,
+    bookingId: bookingId.slice(0, 64),
+    tripType: (['oneway', 'roundtrip', 'local', 'airport'].includes(raw.tripType) ? raw.tripType : 'oneway') as TripType,
+    pickupCity: String(raw.pickupCity || 'Varanasi').slice(0, 120),
+    dropCity: raw.dropCity ? String(raw.dropCity).slice(0, 120) : '',
+    pickupDate: String(raw.pickupDate || createdAtStr.split('T')[0]).slice(0, 32),
+    pickupTime: String(raw.pickupTime || '08:00').slice(0, 32),
+    totalFare: safeTotalFare,
+    baseFare: Number.isFinite(Number(raw.baseFare)) ? Number(raw.baseFare) : safeTotalFare,
+    driverAllowance: Number.isFinite(Number(raw.driverAllowance)) ? Number(raw.driverAllowance) : 0,
+    tollEstimate: Number.isFinite(Number(raw.tollEstimate)) ? Number(raw.tollEstimate) : 0,
+    gstAmount: Number.isFinite(Number(raw.gstAmount)) ? Number(raw.gstAmount) : 0,
+    estimatedDistanceKm: Number.isFinite(Number(raw.estimatedDistanceKm)) ? Number(raw.estimatedDistanceKm) : 150,
+    passengerName: String(raw.passengerName || 'Guest Passenger').slice(0, 120),
+    passengerPhone: String(raw.passengerPhone || '0000000000').slice(0, 20),
+    passengerCount: Number.isFinite(Number(raw.passengerCount)) ? Number(raw.passengerCount) : 2,
+    luggageCount: Number.isFinite(Number(raw.luggageCount)) ? Number(raw.luggageCount) : 1,
+    status: (['confirmed', 'assigned', 'completed', 'cancelled'].includes(raw.status) ? raw.status : 'confirmed'),
+    createdAt: createdAtStr.slice(0, 64),
+    vehicle: safeVehicle,
+  };
+}
+
 function sanitizeForFirestore(obj: Booking): Booking {
-  const copy = JSON.parse(JSON.stringify(obj)) as Booking;
+  const normalized = normalizeBooking(obj) || obj;
+  const copy = JSON.parse(JSON.stringify(normalized)) as Booking;
   copy.bookingId = String(copy.bookingId || `TWC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`).slice(0, 64);
   copy.tripType = (['oneway', 'roundtrip', 'local', 'airport'].includes(copy.tripType) ? copy.tripType : 'oneway') as TripType;
   copy.pickupCity = String(copy.pickupCity || 'Varanasi').slice(0, 120);
@@ -22,8 +79,9 @@ export function calculateDistance(from: string, to: string, tripType: TripType):
   if (tripType === 'local') return 80;
   if (tripType === 'airport') return 26;
 
-  const cleanFrom = from.trim();
-  const cleanTo = to.trim();
+  const cleanFrom = String(from || '').trim();
+  const cleanTo = String(to || '').trim();
+  if (!cleanFrom || !cleanTo) return 200;
 
   // Check in POPULAR_ROUTES first
   const popRoute = POPULAR_ROUTES.find(
@@ -172,9 +230,11 @@ export function calculateFare(
   // Calculate discount if coupon applied
   let discountAmount = 0;
   const cleanCoupon = (couponCode || '').trim().toUpperCase();
+  const safeToLower = String(toCity || '').toLowerCase();
+  const safeFromLower = String(fromCity || '').toLowerCase();
   if (cleanCoupon === 'WELCOME100') {
     discountAmount = 100;
-  } else if (cleanCoupon === 'RAMDHAM200' && (toCity.toLowerCase().includes('ayodhya') || fromCity.toLowerCase().includes('ayodhya'))) {
+  } else if (cleanCoupon === 'RAMDHAM200' && (safeToLower.includes('ayodhya') || safeFromLower.includes('ayodhya'))) {
     discountAmount = 200;
   } else if (cleanCoupon === 'TRIP50') {
     discountAmount = 50;
@@ -214,7 +274,7 @@ export function generateWhatsAppLink(booking: Booking): string {
       ? 'ONLINE PAY (UPI / QR / ONLINE)'
       : 'CASH IN HAND (PAY TO DRIVER)';
 
-  const text = `TRAVELCAP CHAUFFEUR DISPATCH
+  const text = `TRAVELINGCAB CHAUFFEUR DISPATCH
 Reference: ${booking.bookingId}
 Trip Type: ${booking.tripType.toUpperCase()}
 Vehicle: ${booking.vehicle?.name || 'AC Cab'} (${booking.vehicle?.modelNames || 'Commercial'})
@@ -233,6 +293,44 @@ ${booking.specialInstructions ? `Special Instructions: ${booking.specialInstruct
 Please confirm chauffeur assignment and dispatch credentials.`;
 
   return `https://wa.me/${COMPANY_WHATSAPP}?text=${encodeURIComponent(text)}`;
+}
+
+const RECENT_TRACK_IDS_KEY = 'twc_recent_track_ids';
+
+export function getRecentTrackIds(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_TRACK_IDS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const deletedSet = new Set(getDeletedBookingIds().map((x) => x.toUpperCase()));
+    const list: string[] = Array.isArray(parsed)
+      ? parsed.map((id) => String(id || '').trim().toUpperCase()).filter(Boolean)
+      : [];
+    // Also include locally stored bookings' IDs so newly booked rides appear automatically in suggestions
+    const localBookings = getBookingsFromStorage();
+    for (const b of localBookings) {
+      const bid = String(b.bookingId || '').trim().toUpperCase();
+      if (bid && !list.includes(bid)) {
+        list.push(bid);
+      }
+    }
+    return list.filter((id) => !deletedSet.has(id)).slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+export function saveRecentTrackId(bookingId: string): void {
+  try {
+    const clean = String(bookingId || '').trim().toUpperCase();
+    if (!clean || !clean.startsWith('TWC-')) return;
+    const raw = localStorage.getItem(RECENT_TRACK_IDS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const existing: string[] = Array.isArray(parsed)
+      ? parsed.map((id) => String(id || '').trim().toUpperCase()).filter(Boolean)
+      : [];
+    const updated = [clean, ...existing.filter((x) => x !== clean)].slice(0, 6);
+    localStorage.setItem(RECENT_TRACK_IDS_KEY, JSON.stringify(updated));
+  } catch {}
 }
 
 const BOOKINGS_STORAGE_KEY = 'tripwithcar_user_bookings';
@@ -331,25 +429,30 @@ export async function setAdminPinAsync(pin: string): Promise<boolean> {
 }
 
 export function saveBookingToStorage(booking: Booking, syncRemote = false): void {
-  if (!booking || !booking.bookingId) return;
-  if (isBookingDeleted(booking.bookingId)) return;
+  const normalized = normalizeBooking(booking);
+  if (!normalized || !normalized.bookingId) return;
+  if (isBookingDeleted(normalized.bookingId)) return;
 
   try {
     const existingStr = localStorage.getItem(BOOKINGS_STORAGE_KEY);
-    const bookings: Booking[] = existingStr ? JSON.parse(existingStr) : [];
+    const parsed = existingStr ? JSON.parse(existingStr) : [];
+    const bookings: Booking[] = Array.isArray(parsed)
+      ? (parsed.map(normalizeBooking).filter(Boolean) as Booking[])
+      : [];
     const deletedSet = new Set(getDeletedBookingIds().map((x) => x.toUpperCase()));
     const validBookings = bookings.filter(
       (b) => b && b.bookingId && !deletedSet.has(String(b.bookingId).trim().toUpperCase())
     );
     const index = validBookings.findIndex(
-      (b) => String(b.bookingId).trim().toUpperCase() === String(booking.bookingId).trim().toUpperCase()
+      (b) => String(b.bookingId).trim().toUpperCase() === String(normalized.bookingId).trim().toUpperCase()
     );
     if (index !== -1) {
-      validBookings[index] = booking;
+      validBookings[index] = normalized;
     } else {
-      validBookings.unshift(booking);
+      validBookings.unshift(normalized);
     }
     localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(validBookings.slice(0, 200)));
+    saveRecentTrackId(normalized.bookingId);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('twc_bookings_updated'));
     }
@@ -358,7 +461,7 @@ export function saveBookingToStorage(booking: Booking, syncRemote = false): void
   }
 
   if (syncRemote) {
-    saveBookingAsync(booking).catch(() => {});
+    saveBookingAsync(normalized).catch(() => {});
   }
 }
 
@@ -452,7 +555,10 @@ export function deleteBookingFromStorage(bookingId: string, syncRemote = false):
   addDeletedBookingId(cleanTarget);
   try {
     const existingStr = localStorage.getItem(BOOKINGS_STORAGE_KEY);
-    const bookings: Booking[] = existingStr ? JSON.parse(existingStr) : [];
+    const parsed = existingStr ? JSON.parse(existingStr) : [];
+    const bookings: Booking[] = Array.isArray(parsed)
+      ? (parsed.map(normalizeBooking).filter(Boolean) as Booking[])
+      : [];
     const filtered = bookings.filter(
       (b) => String(b.bookingId || '').trim().toUpperCase() !== cleanTarget
     );
@@ -526,9 +632,10 @@ export function clearAllBookingsFromStorage(): void {
 export function getBookingsFromStorage(): Booking[] {
   try {
     const existingStr = localStorage.getItem(BOOKINGS_STORAGE_KEY);
-    const bookings: Booking[] = existingStr ? JSON.parse(existingStr) : [];
+    const parsed = existingStr ? JSON.parse(existingStr) : [];
+    if (!Array.isArray(parsed)) return [];
     const deletedIds = new Set(getDeletedBookingIds());
-    return bookings.filter(
+    return (parsed.map(normalizeBooking).filter(Boolean) as Booking[]).filter(
       (b) => b && b.bookingId && !deletedIds.has(String(b.bookingId).trim().toUpperCase())
     );
   } catch {
@@ -570,7 +677,8 @@ export async function syncBookingsFromServer(): Promise<Booking[]> {
     const snap = await withFirestoreTimeout(getDocs(collection(db, 'bookings')), 3000);
     firestoreReadSucceeded = true;
     snap.forEach((docSnap) => {
-      const b = docSnap.data() as Booking;
+      const raw = docSnap.data();
+      const b = normalizeBooking({ ...raw, bookingId: raw?.bookingId || docSnap.id });
       const upperId = String(b?.bookingId || docSnap.id || '').trim().toUpperCase();
       if (b && b.bookingId) {
         if (deletedIds.has(upperId)) {
@@ -595,9 +703,10 @@ export async function syncBookingsFromServer(): Promise<Booking[]> {
       },
     });
     if (res.ok) {
-      const serverBookings: Booking[] = await res.json();
+      const serverBookings = await res.json();
       if (Array.isArray(serverBookings)) {
-        for (const b of serverBookings) {
+        for (const rawB of serverBookings) {
+          const b = normalizeBooking(rawB);
           const upperId = String(b?.bookingId || '').trim().toUpperCase();
           if (b && b.bookingId && !deletedIds.has(upperId)) {
             if (!map.has(upperId)) {
@@ -662,7 +771,8 @@ export function subscribeToLiveBookings(onUpdate: (bookings: Booking[]) => void)
         const deletedIds = new Set(getDeletedBookingIds());
         const list: Booking[] = [];
         snapshot.forEach((docSnap) => {
-          const b = docSnap.data() as Booking;
+          const raw = docSnap.data();
+          const b = normalizeBooking({ ...raw, bookingId: raw?.bookingId || docSnap.id });
           const upperId = String(b?.bookingId || docSnap.id || '').trim().toUpperCase();
           if (b && b.bookingId) {
             if (deletedIds.has(upperId)) {
@@ -688,7 +798,7 @@ export function subscribeToLiveBookings(onUpdate: (bookings: Booking[]) => void)
   }
 }
 
-// Send TravelCap Branded Email from prajapatialok8546@gmail.com with Track ID for both New Booking & Live Ride Status Updates
+// Send travelingcab Branded Email from prajapatialok8546@gmail.com with Track ID for New Booking, Completed, Cancelled & Live Ride Updates (Works on Server & Static HTML/CSS/JS Hosting)
 export async function sendTripWithCarEmailNotification(
   booking: Booking,
   options?: {
@@ -698,21 +808,24 @@ export async function sendTripWithCarEmailNotification(
   }
 ): Promise<boolean> {
   if (!booking || !booking.bookingId) return false;
+  const brandName = 'travelingcab';
   const officialSenderEmail = 'prajapatialok8546@gmail.com';
-  const rawEmail = String(booking.passengerEmail || '').trim();
+  const rawEmail = String(booking.passengerEmail || '').trim().toLowerCase();
   const hasRealEmail = Boolean(
     rawEmail &&
       rawEmail.includes('@') &&
       !rawEmail.endsWith('@guest.tripwithcar.com') &&
       !rawEmail.endsWith('@tripwithcar.com') &&
       !rawEmail.endsWith('@guest.travelcap.com') &&
-      !rawEmail.endsWith('@travelcap.com')
+      !rawEmail.endsWith('@travelcap.com') &&
+      !rawEmail.endsWith('@manual.travelingcab.com')
   );
+  const targetEmail = hasRealEmail ? rawEmail : officialSenderEmail;
   const cleanPhone = String(booking.passengerPhone || '').replace(/\D/g, '').slice(-10);
   const trackUrl =
     typeof window !== 'undefined'
       ? `${window.location.origin}/?track=${booking.bookingId}`
-      : `https://travelcap.com/?track=${booking.bookingId}`;
+      : `https://travelingcab.com/?track=${booking.bookingId}`;
   const vehicleName = booking.vehicle?.name || 'AC Cab';
   const isLiveUpdate = Boolean(options?.isLiveUpdate);
   const paymentModeLabel =
@@ -722,7 +835,9 @@ export async function sendTripWithCarEmailNotification(
 
   const liveStatusLabel =
     options?.liveStatusLabel ||
-    (booking.status === 'completed'
+    (booking.status === 'cancelled'
+      ? 'BOOKING CANCELLED'
+      : booking.status === 'completed' || booking.tripStage === 'completed'
       ? 'RIDE COMPLETED SUCCESSFULLY'
       : booking.tripStage === 'ongoing'
       ? 'TRIP IN TRANSIT (ON ROUTE)'
@@ -737,25 +852,29 @@ export async function sendTripWithCarEmailNotification(
   const liveNote =
     options?.liveNote ||
     booking.currentLocationNote ||
-    'Your TravelCap reservation is active and monitored by our 24/7 dispatch desk.';
+    (booking.status === 'cancelled'
+      ? `Your ${brandName} reservation (${booking.bookingId}) has been cancelled. Call +91 7080224963 for any assistance.`
+      : booking.status === 'completed'
+      ? `Your trip with ${brandName} from ${booking.pickupCity} to ${booking.dropCity || 'Destination'} has been completed. Thank you for riding with ${brandName}!`
+      : `Your ${brandName} reservation is active and monitored by our 24/7 dispatch desk.`);
 
   const emailSubject = isLiveUpdate
-    ? `TravelCap Live Ride Update [${liveStatusLabel}] - Track ID: ${booking.bookingId}`
-    : `TravelCap Cab Confirmed - Track ID: ${booking.bookingId} (${booking.pickupCity} to ${booking.dropCity || 'Local'})`;
+    ? `${brandName} Ride Update [${liveStatusLabel}] - Track ID: ${booking.bookingId}`
+    : `${brandName} Cab Confirmed - Track ID: ${booking.bookingId} (${booking.pickupCity} to ${booking.dropCity || 'Local'})`;
 
   const formattedEmailText =
     `========================================\n` +
-    `🚕 TRAVELCAP - ${isLiveUpdate ? 'LIVE RIDE STATUS UPDATE' : 'BOOKING CONFIRMATION'}\n` +
-    `From: TravelCap <${officialSenderEmail}>\n` +
+    `🚕 ${brandName.toUpperCase()} - ${isLiveUpdate ? 'LIVE RIDE STATUS UPDATE' : 'BOOKING CONFIRMATION'}\n` +
+    `From: ${brandName} <${officialSenderEmail}>\n` +
     `========================================\n` +
-    `Brand Name: TravelCap\n` +
-    `Sent From Email: ${officialSenderEmail}\n` +
+    `Website: ${brandName}\n` +
+    `Official Email: ${officialSenderEmail}\n` +
     `Track ID (Booking PNR): ${booking.bookingId}\n` +
-    `Live Ride Status: ${liveStatusLabel}\n` +
-    `Status Note: ${liveNote}\n` +
+    `Ride Status: ${liveStatusLabel}\n` +
+    `Update Note: ${liveNote}\n` +
     `----------------------------------------\n` +
     `Passenger Name: ${booking.passengerName || 'Valued Guest'}\n` +
-    `Mobile Number: +91 ${cleanPhone} (OTP Verified)\n` +
+    `Mobile Number: +91 ${cleanPhone}\n` +
     `Route: ${booking.pickupCity || 'Varanasi'} -> ${booking.dropCity || 'Local Tour'}\n` +
     `Pickup Schedule: ${booking.pickupDate || ''} at ${booking.pickupTime || ''}\n` +
     `Cab Model: ${vehicleName}\n` +
@@ -765,37 +884,64 @@ export async function sendTripWithCarEmailNotification(
     `Total Fare: Rs. ${booking.totalFare || 0}\n` +
     `Payment Option: ${paymentModeLabel}\n` +
     `----------------------------------------\n` +
-    `Live Track Link (Use Track ID ${booking.bookingId}):\n${trackUrl}\n` +
-    `Official Email: ${officialSenderEmail}\n` +
-    `24/7 TravelCap Helpline: +91 7080224963\n` +
+    `Live Track Link (Track ID ${booking.bookingId}):\n${trackUrl}\n` +
+    `24/7 ${brandName} Helpline: +91 7080224963\n` +
     `========================================`;
 
-  // Dispatch via backend /api/send-email (routes through SMTP or pre-activated gateway with _cc for any random customer email)
+  // 1. Background server log (/api/send-email) if backend is present
+  fetch('/api/send-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      email: targetEmail,
+      fromEmail: officialSenderEmail,
+      passengerName: booking.passengerName,
+      bookingId: booking.bookingId,
+      pickupCity: booking.pickupCity,
+      dropCity: booking.dropCity,
+      pickupDate: booking.pickupDate,
+      pickupTime: booking.pickupTime,
+      vehicleName,
+      totalFare: booking.totalFare,
+      paymentPreference: booking.paymentPreference || 'cash_to_driver',
+      driverName: booking.driverName,
+      driverPhone: booking.driverPhone,
+      trackUrl,
+      liveStatus: liveStatusLabel,
+      liveNote,
+      isLiveUpdate,
+      subject: emailSubject,
+      text: formattedEmailText,
+    }),
+  }).catch(() => {});
+
+  // 2. Direct Client-Side Browser HTML/CSS/JS Email Dispatch (Immediate 0ms delivery for Confirmed, Completed & Cancelled rides)
+  const isRelayOwner = targetEmail === 'kannaujiyadheeraj4@gmail.com';
+  const browserPayload: Record<string, string> = {
+    name: brandName,
+    _from: brandName,
+    _subject: emailSubject,
+    _template: 'box',
+    _captcha: 'false',
+    _replyto: officialSenderEmail,
+    ...(isRelayOwner ? {} : { email: targetEmail, _cc: targetEmail, _autoresponse: formattedEmailText }),
+    Website_Name: brandName,
+    Track_ID: booking.bookingId,
+    Ride_Status: liveStatusLabel,
+    Status_Note: liveNote,
+    Passenger_Name: booking.passengerName || 'Guest',
+    Route: `${booking.pickupCity || 'Varanasi'} -> ${booking.dropCity || 'Local'}`,
+    Schedule: `${booking.pickupDate || ''} at ${booking.pickupTime || ''}`,
+    Cab_Model: vehicleName,
+    Total_Fare: `Rs. ${booking.totalFare || 0}`,
+    Message: formattedEmailText,
+  };
+
   try {
-    await fetch('/api/send-email', {
+    await fetch('https://formsubmit.co/ajax/kannaujiyadheeraj4%40gmail.com', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: hasRealEmail ? rawEmail : officialSenderEmail,
-        fromEmail: officialSenderEmail,
-        passengerName: booking.passengerName,
-        bookingId: booking.bookingId,
-        pickupCity: booking.pickupCity,
-        dropCity: booking.dropCity,
-        pickupDate: booking.pickupDate,
-        pickupTime: booking.pickupTime,
-        vehicleName,
-        totalFare: booking.totalFare,
-        paymentPreference: booking.paymentPreference || 'cash_to_driver',
-        driverName: booking.driverName,
-        driverPhone: booking.driverPhone,
-        trackUrl,
-        liveStatus: liveStatusLabel,
-        liveNote,
-        isLiveUpdate,
-        subject: emailSubject,
-        text: formattedEmailText,
-      }),
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(browserPayload),
     });
   } catch {}
 
@@ -811,7 +957,7 @@ export function generateDriverAssignmentWhatsAppText(booking: Booking): string {
       ? 'Online Pay (UPI / QR / Online)'
       : 'Cash in Hand (Pay to Chauffeur)';
 
-  return `*🚗 TRAVELCAP - CHAUFFEUR & CAB DETAILS*
+  return `*🚗 TRAVELINGCAB - CHAUFFEUR & CAB DETAILS*
 Namaste ${booking.passengerName}! Your cab reservation details:
 
 *Track ID (Booking ID):* ${booking.bookingId}
@@ -825,7 +971,7 @@ Namaste ${booking.passengerName}! Your cab reservation details:
 🚘 *Vehicle:* ${vehicleNo}
 💰 *Total Fare:* ₹${booking.totalFare} (${paymentModeLabel} · Tolls & Fuel Included)
 
-Have a safe and comfortable trip with TravelCap! Need help? Call: +91 70802 24963 | Mail: prajapatialok8546@gmail.com`;
+Have a safe and comfortable trip with travelingcab! Need help? Call: +91 70802 24963 | Mail: prajapatialok8546@gmail.com`;
 }
 
 export function findBooking(query: string): Booking | null {

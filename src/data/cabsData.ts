@@ -1,6 +1,6 @@
 import { Vehicle, PopularRoute, TourPackage, Review, FaqItem } from '../types/cab';
 
-export const COMPANY_NAME = "TravelCap";
+export const COMPANY_NAME = "travelingcab";
 export const COMPANY_PHONE = "7080224963";
 export const COMPANY_PHONE_RAW = "7080224963";
 export const COMPANY_PHONE_ALT = "9517573435";
@@ -1211,10 +1211,10 @@ export const REVIEWS: Review[] = [
 
 export const FAQS: FaqItem[] = [
   {
-    question: 'How does booking work with TravelCap?',
-    questionHi: 'TravelCap से कैब बुकिंग की प्रक्रिया क्या है?',
-    answer: 'Booking is immediate and digital. Select your service category (One-Way, Round-Trip, Local Rental, or Airport Transfer), provide route details, choose your preferred vehicle class, and verify your mobile number via instant OTP. You receive a digital booking voucher with instant WhatsApp, SMS, and Email dispatch coordination.',
-    answerHi: 'बुकिंग पूरी तरह डिजिटल और त्वरित है। अपनी यात्रा का प्रकार (वन-वे, राउंड-ट्रिप, लोकल या एयरपोर्ट) चुनें, रूट एवं कार का चयन करें, और मोबाइल OTP सत्यापित करें। आपको तुरंत डिजिटल वाउचर और व्हाट्सएप अपडेट प्राप्त होता है।',
+    question: 'How does booking work with travelingcab?',
+    questionHi: 'travelingcab से कैब बुकिंग की प्रक्रिया क्या है?',
+    answer: 'Booking is immediate and digital. Select your service category (One-Way, Round-Trip, Local Rental, or Airport Transfer), provide route details, choose your preferred vehicle class, and verify your email via instant OTP. You receive a digital booking voucher with instant WhatsApp, SMS, and Email dispatch coordination.',
+    answerHi: 'बुकिंग पूरी तरह डिजिटल और त्वरित है। अपनी यात्रा का प्रकार (वन-वे, राउंड-ट्रिप, लोकल या एयरपोर्ट) चुनें, रूट एवं कार का चयन करें, और ईमेल OTP सत्यापित करें। आपको तुरंत डिजिटल वाउचर और व्हाट्सएप अपडेट प्राप्त होता है।',
     category: 'booking',
   },
   {
@@ -1248,8 +1248,8 @@ export const FAQS: FaqItem[] = [
   {
     question: 'Are chauffeurs verified and experienced on intercity routes?',
     questionHi: 'क्या ड्राइवर अनुभवी एवं सत्यापित हैं?',
-    answer: 'Every TravelCap chauffeur holds a valid commercial transport endorsement, is police-verified, adheres to a strict non-smoking code, and possesses thorough familiarity with temple security gates, parking protocols, and expressways.',
-    answerHi: 'TravelCap के सभी सारथी वाणिज्यिक लाइसेंस धारक, पुलिस सत्यापित, धूम्रपान-मुक्त और एक्सप्रेसवे तथा मंदिर सुरक्षा प्रोटोकॉल से भली-भांति परिचित हैं।',
+    answer: 'Every travelingcab chauffeur holds a valid commercial transport endorsement, is police-verified, adheres to a strict non-smoking code, and possesses thorough familiarity with temple security gates, parking protocols, and expressways.',
+    answerHi: 'travelingcab के सभी सारथी वाणिज्यिक लाइसेंस धारक, पुलिस सत्यापित, धूम्रपान-मुक्त और एक्सप्रेसवे तथा मंदिर सुरक्षा प्रोटोकॉल से भली-भांति परिचित हैं।',
     category: 'driver',
   },
 ];

@@ -21,6 +21,23 @@ export default defineConfig({
     hmr: false,
   },
   optimizeDeps: {
+    entries: ['index.html'],
     include: ['react', 'react-dom', 'lucide-react', 'firebase/app', 'firebase/firestore'],
+  },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'js/script.js',
+        chunkFileNames: 'js/[name].js',
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name && assetInfo.name.endsWith('.css')) {
+            return 'css/style.css';
+          }
+          return 'assets/[name][extname]';
+        },
+      },
+    },
   },
 });

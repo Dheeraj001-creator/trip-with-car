@@ -26,7 +26,10 @@ import {
   findBooking, 
   findBookingAsync, 
   generateWhatsAppLink, 
-  deleteBookingFromStorage 
+  deleteBookingFromStorage,
+  getRecentTrackIds,
+  saveRecentTrackId,
+  sendTripWithCarEmailNotification
 } from '../utils/fareCalculator';
 import { COMPANY_PHONE } from '../data/cabsData';
 
@@ -52,8 +55,8 @@ const getLiveStatusDescription = (b: Booking, stageIdx: number, lang: 'en' | 'hi
   switch (stageIdx) {
     case 5:
       return lang === 'en'
-        ? `Trip successfully completed and received at ${b.dropCity || 'Destination'}. Thank you for traveling with TravelCap!`
-        : `यात्रा सफलतापूर्वक संपन्न हुई! गंतव्य (${b.dropCity || 'गंतव्य'}) पर सुरक्षित पहुंचा दिया गया है। TravelCap चुनने के लिए धन्यवाद!`;
+        ? `Trip successfully completed and received at ${b.dropCity || 'Destination'}. Thank you for traveling with travelingcab!`
+        : `यात्रा सफलतापूर्वक संपन्न हुई! गंतव्य (${b.dropCity || 'गंतव्य'}) पर सुरक्षित पहुंचा दिया गया है। travelingcab चुनने के लिए धन्यवाद!`;
     case 4:
       return lang === 'en'
         ? `Live on Highway: Cab is currently in transit from ${b.pickupCity} towards ${b.dropCity || 'Destination'}. Safe & air-conditioned ride in progress.`
@@ -92,6 +95,7 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'driver' | 'stages' | 'route' | 'fare'>('driver');
+  const [recentIds, setRecentIds] = useState<string[]>([]);
 
   const isLight = theme === 'light' || (typeof document !== 'undefined' && document.documentElement.classList.contains('light'));
 
@@ -102,15 +106,18 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Clean initialization: strictly do not auto-select previous bookings on blank open
+  // Clean initialization: when opened from Track Ride button, do NOT auto-open booking directly; show recent Track IDs below input so user clicks to open or types a new ID
   useEffect(() => {
     if (isOpen) {
+      setRecentIds(getRecentTrackIds());
       if (initialBookingId) {
         setSearchQuery(initialBookingId);
         setIsSearching(true);
         findBookingAsync(initialBookingId).then(found => {
           setIsSearching(false);
           if (found) {
+            saveRecentTrackId(found.bookingId);
+            setRecentIds(getRecentTrackIds());
             setSearchedBooking(found);
             setNotFound(false);
           } else {
@@ -130,6 +137,7 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
   // Listen for real-time stage updates from dashboard
   useEffect(() => {
     const handleStorageUpdate = () => {
+      setRecentIds(getRecentTrackIds());
       if (searchedBooking) {
         findBookingAsync(searchedBooking.bookingId).then(refreshed => {
           if (refreshed) {
@@ -149,22 +157,35 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
 
   const handleDeleteCurrent = () => {
     if (!searchedBooking) return;
-    deleteBookingFromStorage(searchedBooking.bookingId);
+    const cancelledCopy: Booking = {
+      ...searchedBooking,
+      status: 'cancelled',
+      currentLocationNote: `Your travelingcab reservation (${searchedBooking.bookingId}) has been cancelled.`,
+    };
+    sendTripWithCarEmailNotification(cancelledCopy, {
+      isLiveUpdate: true,
+      liveStatusLabel: 'BOOKING CANCELLED',
+      liveNote: cancelledCopy.currentLocationNote,
+    }).catch(() => {});
+    deleteBookingFromStorage(searchedBooking.bookingId, true);
+    setRecentIds(getRecentTrackIds());
     setSearchedBooking(null);
     setConfirmDelete(false);
     setSearchQuery('');
   };
 
-  const handleSearch = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const clean = searchQuery.trim();
+  const executeSearchById = async (targetQuery: string) => {
+    const clean = targetQuery.trim();
     if (!clean) return;
 
+    setSearchQuery(clean);
     setIsSearching(true);
     setNotFound(false);
     try {
       const result = await findBookingAsync(clean);
       if (result) {
+        saveRecentTrackId(result.bookingId);
+        setRecentIds(getRecentTrackIds());
         setSearchedBooking(result);
         setNotFound(false);
         setActiveTab('driver');
@@ -178,6 +199,11 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    await executeSearchById(searchQuery);
   };
 
   if (!isOpen) return null;
@@ -274,13 +300,42 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
               {isSearching ? (language === 'en' ? 'Checking...' : 'खोज रहे हैं...') : (language === 'en' ? 'Track' : 'खोजें')}
             </button>
           </div>
+
+          {/* Clickable Recent / Saved Track IDs Below Search Bar */}
+          {recentIds.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-slate-200/70 dark:border-slate-800/80 flex items-center gap-1.5 flex-wrap">
+              <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                {language === 'en' ? 'Your Track ID (Click to Open):' : 'आपकी ट्रैक आईडी (खोलने के लिए क्लिक करें):'}
+              </span>
+              {recentIds.map((tid) => {
+                const isActiveId = searchedBooking?.bookingId?.toUpperCase() === tid.toUpperCase();
+                return (
+                  <button
+                    key={tid}
+                    type="button"
+                    onClick={() => executeSearchById(tid)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-black border transition-all cursor-pointer active:scale-95 flex items-center gap-1 ${
+                      isActiveId
+                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs'
+                        : isLight
+                          ? 'bg-white hover:bg-blue-50 text-blue-700 border-blue-200 shadow-2xs'
+                          : 'bg-[#0F172A] hover:bg-blue-950/50 text-amber-400 border-slate-700 hover:border-amber-500/50'
+                    }`}
+                  >
+                    <span>{tid}</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </form>
 
         {/* Content Body */}
         <div className="p-3 sm:p-4 overflow-y-auto space-y-3 flex-1 scrollbar-none">
           {/* STATE 1: Welcoming search prompt when no ID entered yet */}
           {!searchedBooking && !notFound && (
-            <div className={`p-6 sm:p-8 rounded-2xl border text-center space-y-3 ${
+            <div className={`p-5 sm:p-7 rounded-2xl border text-center space-y-3 ${
               isLight ? 'bg-slate-50/80 border-slate-200' : 'bg-[#070D1A] border-slate-800'
             }`}>
               <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center mx-auto shadow-sm">
@@ -288,14 +343,35 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
               </div>
               <div className="max-w-sm mx-auto">
                 <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                  {language === 'en' ? 'Enter Track ID to Open Reservation' : 'बुकिंग रिकॉर्ड देखने के लिए ट्रैक नंबर डालें'}
+                  {language === 'en' ? 'Select Your Track ID or Enter New ID' : 'नीचे अपनी ट्रैक आईडी पर क्लिक करें या नई आईडी डालें'}
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                   {language === 'en'
-                    ? 'Type your Booking PNR (e.g. TWC-2026-XXXX) or registered 10-digit mobile number above and press Track.'
-                    : 'कृपया ऊपर अपना ट्रैक नंबर (उदा. TWC-2026-XXXX) या 10 अंकों का मोबाइल नंबर दर्ज करें और खोजें पर क्लिक करें।'}
+                    ? 'Click on your saved Track ID below to open your booking, or type a new Booking PNR (e.g. TWC-2026-XXXX) in the box above.'
+                    : 'अपनी पिछली बुकिंग खोलने के लिए नीचे दिख रही ट्रैक आईडी पर क्लिक करें, या नई बुकिंग देखने के लिए ऊपर बॉक्स में नया ट्रैक नंबर डालें।'}
                 </p>
               </div>
+
+              {recentIds.length > 0 && (
+                <div className="pt-2 flex flex-col items-center gap-2">
+                  <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-amber-500">
+                    {language === 'en' ? '👇 Click Your Track ID Below to Open' : '👇 बुकिंग खोलने के लिए अपनी ट्रैक आईडी पर क्लिक करें'}
+                  </span>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {recentIds.map((tid) => (
+                      <button
+                        key={tid}
+                        type="button"
+                        onClick={() => executeSearchById(tid)}
+                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+                      >
+                        <span>{tid}</span>
+                        <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -1,12 +1,13 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" translate="no" class="notranslate">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TravelCap | Premium Outstation, Local & Airport Taxi Services</title>
-    <meta name="description" content="Book verified one-way, round-trip, local hourly rental and airport chauffeur cars across Varanasi, Ayodhya, Prayagraj, Lucknow and Pan India with TravelCap." />
-    <meta property="og:title" content="TravelCap | Premium Outstation, Local & Airport Taxi Services" />
-    <meta property="og:description" content="Book verified one-way, round-trip, local hourly rental and airport chauffeur cars across Varanasi, Ayodhya, Prayagraj, Lucknow and Pan India with TravelCap." />
+    <meta name="google" content="notranslate" />
+    <title>travelingcab | Premium Outstation, Local & Airport Taxi Services</title>
+    <meta name="description" content="Book verified one-way, round-trip, local hourly rental and airport chauffeur cars across Varanasi, Ayodhya, Prayagraj, Lucknow and Pan India with travelingcab." />
+    <meta property="og:title" content="travelingcab | Premium Outstation, Local & Airport Taxi Services" />
+    <meta property="og:description" content="Book verified one-way, round-trip, local hourly rental and airport chauffeur cars across Varanasi, Ayodhya, Prayagraj, Lucknow and Pan India with travelingcab." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,6 +19,23 @@
     </noscript>
     <script>
       (function () {
+        if (typeof Node === 'function' && Node.prototype) {
+          var originalRemoveChild = Node.prototype.removeChild;
+          Node.prototype.removeChild = function (child) {
+            if (child && child.parentNode !== this) {
+              return child;
+            }
+            return originalRemoveChild.apply(this, arguments);
+          };
+          var originalInsertBefore = Node.prototype.insertBefore;
+          Node.prototype.insertBefore = function (newNode, referenceNode) {
+            if (referenceNode && referenceNode.parentNode !== this) {
+              return newNode;
+            }
+            return originalInsertBefore.apply(this, arguments);
+          };
+        }
+
         var OrigWebSocket = window.WebSocket;
         if (!OrigWebSocket) return;
         function DummyWebSocket(url, protocols) {

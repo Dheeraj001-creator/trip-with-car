@@ -41,8 +41,8 @@ export const Footer: React.FC<FooterProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-0.5">
-                  <span className={`text-base font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>Travel</span>
-                  <span className="text-base font-black tracking-tight text-blue-600">Cap</span>
+                  <span className={`text-base font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>traveling</span>
+                  <span className="text-base font-black tracking-tight text-blue-600">cab</span>
                 </div>
                 <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
                   Intercity Chauffeur Services
@@ -51,7 +51,7 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
 
             <p className="text-xs leading-relaxed pr-6">
-              TravelCap provides scheduled intercity transportation, airport transfers, and spiritual corridor tours throughout Varanasi, Ayodhya, Prayagraj, Lucknow, Delhi NCR, and adjoining interstate routes with transparent tariff pricing.
+              travelingcab provides scheduled intercity transportation, airport transfers, and spiritual corridor tours throughout Varanasi, Ayodhya, Prayagraj, Lucknow, Delhi NCR, and adjoining interstate routes with transparent tariff pricing.
             </p>
 
             <div className={`space-y-2 pt-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>

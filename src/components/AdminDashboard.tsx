@@ -283,6 +283,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setBookingToComplete(booking);
       return;
     }
+    const statusNote =
+      newStatus === 'cancelled'
+        ? `Your travelingcab reservation (${booking.bookingId}) from ${booking.pickupCity} to ${booking.dropCity || 'Local'} has been CANCELLED. For assistance call +91 7080224963.`
+        : `Your travelingcab booking (${booking.bookingId}) status is now ${newStatus.toUpperCase()}.`;
+
     const updated: Booking = {
       ...booking,
       status: newStatus,
@@ -293,15 +298,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           ? 'received'
           : booking.tripStage,
       stageUpdatedAt: new Date().toISOString(),
+      currentLocationNote: statusNote,
     };
     updateBookingInStorage(updated);
     setBookings((prev) => prev.map((b) => (b.bookingId === updated.bookingId ? updated : b)));
     sendTripWithCarEmailNotification(updated, {
       isLiveUpdate: true,
-      liveStatusLabel: `BOOKING ${newStatus.toUpperCase()}`,
-      liveNote: `Your TravelCap booking (${updated.bookingId}) status is now ${newStatus.toUpperCase()}.`,
+      liveStatusLabel: newStatus === 'cancelled' ? 'BOOKING CANCELLED' : `BOOKING ${newStatus.toUpperCase()}`,
+      liveNote: statusNote,
     }).catch(() => {});
-    showToast(`Status updated to ${newStatus.toUpperCase()} · TravelCap email sent!`);
+    showToast(
+      newStatus === 'cancelled'
+        ? `Reservation ${updated.bookingId} marked Cancelled · travelingcab cancellation email sent!`
+        : `Status updated to ${newStatus.toUpperCase()} · travelingcab email sent!`
+    );
   };
 
   // Confirm Ride Completion from Popup Modal ("OK" clicked)
@@ -312,7 +322,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       status: 'completed',
       tripStage: 'completed',
       stageUpdatedAt: new Date().toISOString(),
-      currentLocationNote: `Trip successfully completed and received at ${bookingToComplete.dropCity || 'Destination'}. Thank you for riding with TravelCap!`,
+      currentLocationNote: `Trip successfully completed and received at ${bookingToComplete.dropCity || 'Destination'}. Thank you for riding with travelingcab!`,
     };
     updateBookingInStorage(updated);
     setBookings((prev) => prev.map((b) => (b.bookingId === updated.bookingId ? updated : b)));
@@ -323,7 +333,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }).catch(() => {});
     const completedId = updated.bookingId;
     setBookingToComplete(null);
-    showToast(`Ride ${completedId} marked Completed! TravelCap email sent to customer.`);
+    showToast(`Ride ${completedId} marked Completed! travelingcab email sent to customer.`);
   };
 
   // Open Driver Assignment Modal
@@ -364,7 +374,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       liveNote: updated.currentLocationNote,
     }).catch(() => {});
     setDriverModalBooking(null);
-    showToast(`Chauffeur ${driverNameInput.trim()} assigned! TravelCap email & live tracking updated.`);
+    showToast(`Chauffeur ${driverNameInput.trim()} assigned! travelingcab email & live tracking updated.`);
   };
 
   // Delete Booking Execution (Permanent across LocalStorage, Server & Cloud Firestore)
@@ -489,7 +499,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       liveStatusLabel: statusLabel,
       liveNote: updated.currentLocationNote,
     }).catch(() => {});
-    showToast(`Live Stage: ${stage.toUpperCase()} · TravelCap email sent for Track ID ${booking.bookingId}!`);
+    showToast(`Live Stage: ${stage.toUpperCase()} · travelingcab email sent for Track ID ${booking.bookingId}!`);
   };
 
   // Change Admin PIN (Syncs instantly across Mobile & PC via centralized server)
@@ -565,7 +575,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `TravelCap_Bookings_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `travelingcab_Bookings_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -575,16 +585,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Filtered Bookings list
   const filteredBookings = useMemo(() => {
     return bookings.filter(b => {
+      if (!b || typeof b !== 'object') return false;
       // Query filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesQuery = 
-          (b.bookingId || '').toLowerCase().includes(q) ||
-          (b.passengerName || '').toLowerCase().includes(q) ||
-          (b.passengerPhone || '').includes(q) ||
-          (b.pickupCity || '').toLowerCase().includes(q) ||
-          (b.dropCity && b.dropCity.toLowerCase().includes(q)) ||
-          (b.driverName && b.driverName.toLowerCase().includes(q));
+          String(b.bookingId || '').toLowerCase().includes(q) ||
+          String(b.passengerName || '').toLowerCase().includes(q) ||
+          String(b.passengerPhone || '').includes(q) ||
+          String(b.pickupCity || '').toLowerCase().includes(q) ||
+          (b.dropCity && String(b.dropCity).toLowerCase().includes(q)) ||
+          (b.driverName && String(b.driverName).toLowerCase().includes(q));
         if (!matchesQuery) return false;
       }
 
@@ -605,11 +616,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Summary Metrics
   const metrics = useMemo(() => {
     const totalCount = bookings.length;
-    const totalGross = bookings.reduce((sum, b) => sum + (b.totalFare || 0), 0);
-    const activeTrips = bookings.filter(b => b.status === 'confirmed' || b.status === 'assigned').length;
+    const totalGross = bookings.reduce((sum, b) => sum + (Number(b?.totalFare) || 0), 0);
+    const activeTrips = bookings.filter(b => b?.status === 'confirmed' || b?.status === 'assigned').length;
     
     const today = new Date().toISOString().split('T')[0];
-    const todayBookings = bookings.filter(b => b.createdAt && b.createdAt.startsWith(today)).length;
+    const todayBookings = bookings.filter(b => typeof b?.createdAt === 'string' && b.createdAt.startsWith(today)).length;
 
     return { totalCount, totalGross, activeTrips, todayBookings };
   }, [bookings]);
@@ -844,7 +855,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <h2 className="text-base font-black tracking-tight text-slate-900">Staff &amp; Dispatch Access</h2>
             <p className="text-xs text-slate-500 mt-0.5 mb-3">
-              Private portal for TravelCap fleet dispatch.
+              Private portal for travelingcab fleet dispatch.
             </p>
 
             {/* PIN Entry Display */}
@@ -1784,7 +1795,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               filteredBookings.map((b, index) => {
                 const cleanPhone = (b.passengerPhone || '').replace(/\D/g, '');
                 const customerWhatsAppMsg = encodeURIComponent(
-                  `Namaste ${b.passengerName || 'Guest'}, this is TravelCap team regarding your cab booking ${b.bookingId} (${b.pickupCity} → ${b.dropCity || 'Local'}). How can we assist you?`
+                  `Namaste ${b.passengerName || 'Guest'}, this is travelingcab team regarding your cab booking ${b.bookingId} (${b.pickupCity} → ${b.dropCity || 'Local'}). How can we assist you?`
                 );
                 const customerWhatsAppUrl = `https://wa.me/91${cleanPhone}?text=${customerWhatsAppMsg}`;
                 const driverDispatchText = encodeURIComponent(generateDriverAssignmentWhatsAppText(b));
@@ -1844,35 +1855,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <option value="cancelled" className="bg-slate-900 text-white">Cancelled</option>
                         </select>
 
-                        {/* INLINE DELETE CONFIRMATION */}
-                        {inlineConfirmDeleteId === b.bookingId ? (
-                          <div className="flex items-center gap-1 bg-red-950 border border-red-500 px-2 py-0.5 rounded-lg animate-in fade-in duration-100">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteBookingDirect(b.bookingId)}
-                              className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] cursor-pointer"
-                            >
-                              Delete
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setInlineConfirmDeleteId(null)}
-                              className="p-0.5 text-slate-300 hover:text-white cursor-pointer"
-                              title="Cancel"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setInlineConfirmDeleteId(b.bookingId)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer"
-                            title="Delete reservation"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                          </button>
-                        )}
+                        {/* DELETE BUTTON: Opens Centered Confirmation Popup Modal */}
+                        <button
+                          type="button"
+                          onClick={() => setBookingToDelete(b)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                          title="Delete reservation"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </button>
                       </div>
                     </div>
 

@@ -234,7 +234,7 @@ const ACTIVATED_RELAY_EMAIL = 'kannaujiyadheeraj4@gmail.com';
 // Lock to the exact origin activated on FormSubmit so it works across Dev, Shared URL, and Custom Domains
 const ACTIVATED_FORMSUBMIT_ORIGIN =
   'https://ais-dev-nsvkms5u62lvqhgn52cpjh-968627498352.asia-southeast1.run.app';
-const OFFICIAL_BRAND_NAME = 'TravelCap';
+const OFFICIAL_BRAND_NAME = 'travelingcab';
 
 // Real email dispatch helper using SMTP (nodemailer) and Pre-Activated FormSubmit Gateway for any random customer email
 async function sendRealEmail({
@@ -244,6 +244,7 @@ async function sendRealEmail({
   html,
   otpCode,
   passengerName,
+  skipFormSubmit,
 }: {
   to: string;
   subject: string;
@@ -251,6 +252,7 @@ async function sendRealEmail({
   html?: string;
   otpCode?: string;
   passengerName?: string;
+  skipFormSubmit?: boolean;
 }): Promise<boolean> {
   const cleanTo = String(to || '').trim().toLowerCase();
   const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER || OFFICIAL_SENDER_EMAIL;
@@ -281,11 +283,15 @@ async function sendRealEmail({
       console.log(`[SMTP REAL MAIL DELIVERED] Successfully sent to: ${cleanTo}`);
       return true;
     } catch (err) {
-      console.warn('[SMTP SEND WARNING] SMTP failed, proceeding with FormSubmit relay:', err);
+      console.warn('[SMTP SEND WARNING] SMTP failed, proceeding with relay:', err);
     }
   }
 
-  // FormSubmit requires exact Origin and Referer headers matching the activated domain
+  if (skipFormSubmit) {
+    return true;
+  }
+
+  // Gateway headers matching the activated domain
   const formHeaders = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -297,14 +303,16 @@ async function sendRealEmail({
 
   const isRelayOwner = cleanTo === ACTIVATED_RELAY_EMAIL.toLowerCase();
 
-  // Route through pre-activated gateway with _cc so ANY random customer email receives the OTP/voucher immediately without activation prompts
+  // Route through pre-activated gateway with _cc, _from, and name set to travelingcab so customer receives travelingcab branded mail
   const payload: Record<string, string> = {
+    name: OFFICIAL_BRAND_NAME,
+    _from: OFFICIAL_BRAND_NAME,
     _subject: subject,
-    _template: 'table',
+    _template: 'box',
     _captcha: 'false',
     _replyto: OFFICIAL_SENDER_EMAIL,
-    ...(isRelayOwner ? {} : { _cc: cleanTo, email: cleanTo }),
-    Brand_Name: OFFICIAL_BRAND_NAME,
+    ...(isRelayOwner ? {} : { _cc: cleanTo, email: cleanTo, _autoresponse: body }),
+    Website_Name: OFFICIAL_BRAND_NAME,
     Official_Sender: `${OFFICIAL_BRAND_NAME} <${OFFICIAL_SENDER_EMAIL}>`,
     ...(otpCode
       ? {
@@ -360,9 +368,9 @@ setInterval(() => {
   }
 }, 2 * 60 * 1000);
 
-// EMAIL OTP VERIFICATION DISPATCH ENDPOINT (Anti-Fraud Server-Side Generation, 2-Minute Timer)
-app.post('/api/send-otp', async (req: Request, res: Response) => {
-  const { email, phone, passengerName } = req.body || {};
+// EMAIL OTP VERIFICATION DISPATCH ENDPOINT (Anti-Fraud Server-Side Generation, 2-Minute Timer, Instant 0ms Response)
+app.post('/api/send-otp', (req: Request, res: Response) => {
+  const { email, phone, passengerName, clientOtp, skipFormSubmit } = req.body || {};
   const cleanEmail = String(email || '').trim().toLowerCase();
   const cleanPhone = String(phone || '').replace(/\D/g, '').slice(-10);
 
@@ -371,8 +379,10 @@ app.post('/api/send-otp', async (req: Request, res: Response) => {
     return;
   }
 
-  // Generate genuine 4-digit numeric OTP on the server
-  const serverOtp = String(Math.floor(1000 + Math.random() * 9000));
+  // Use synchronized 4-digit OTP if passed from client, otherwise generate 4-digit numeric OTP on server
+  const cleanClientOtp = String(clientOtp || '').replace(/\D/g, '').trim();
+  const serverOtp =
+    cleanClientOtp.length === 4 ? cleanClientOtp : String(Math.floor(1000 + Math.random() * 9000));
 
   // Store with 5-minute server grace window (UI displays 2-minute 120s timer) and max 5 attempts
   otpStore.set(cleanEmail, {
@@ -414,57 +424,53 @@ app.post('/api/send-otp', async (req: Request, res: Response) => {
     </div>
   `;
 
-  try {
-    ensureDataFile();
-    const emailOtpRecord = {
-      id: `EMAIL-OTP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
-      fromName: OFFICIAL_BRAND_NAME,
-      fromEmail: OFFICIAL_SENDER_EMAIL,
-      fromFormatted: `${OFFICIAL_BRAND_NAME} <${OFFICIAL_SENDER_EMAIL}>`,
-      to: cleanEmail,
-      phone: cleanPhone || 'N/A',
-      subject,
-      body: otpMailBody,
-      timestamp: new Date().toISOString(),
-      status: 'SENT',
-    };
+  // Respond immediately (0ms) so the client never waits
+  res.json({
+    success: true,
+    message: `4-digit OTP has been sent to ${cleanEmail} (Valid for 2 minutes).`,
+    email: cleanEmail,
+    brand: OFFICIAL_BRAND_NAME,
+    expiresInSeconds: 120,
+  });
 
-    const existingLogs = fs.existsSync(EMAIL_LOG_FILE)
-      ? JSON.parse(fs.readFileSync(EMAIL_LOG_FILE, 'utf-8') || '[]')
-      : [];
-    existingLogs.unshift(emailOtpRecord);
-    fs.writeFileSync(EMAIL_LOG_FILE, JSON.stringify(existingLogs.slice(0, 100), null, 2), 'utf-8');
+  // Log & dispatch asynchronously in background
+  (async () => {
+    try {
+      ensureDataFile();
+      const emailOtpRecord = {
+        id: `EMAIL-OTP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+        fromName: OFFICIAL_BRAND_NAME,
+        fromEmail: OFFICIAL_SENDER_EMAIL,
+        fromFormatted: `${OFFICIAL_BRAND_NAME} <${OFFICIAL_SENDER_EMAIL}>`,
+        to: cleanEmail,
+        phone: cleanPhone || 'N/A',
+        subject,
+        body: otpMailBody,
+        timestamp: new Date().toISOString(),
+        status: 'SENT',
+      };
 
-    // Attempt real email dispatch via SMTP + FormSubmit with verified Origin/Referer headers
-    await sendRealEmail({
-      to: cleanEmail,
-      subject,
-      body: otpMailBody,
-      html: otpHtml,
-      otpCode: serverOtp,
-      passengerName: passengerName || 'Valued Customer',
-    });
+      const existingLogs = fs.existsSync(EMAIL_LOG_FILE)
+        ? JSON.parse(fs.readFileSync(EMAIL_LOG_FILE, 'utf-8') || '[]')
+        : [];
+      existingLogs.unshift(emailOtpRecord);
+      fs.writeFileSync(EMAIL_LOG_FILE, JSON.stringify(existingLogs.slice(0, 100), null, 2), 'utf-8');
 
-    console.log(`[TRAVELCAP EMAIL OTP DISPATCHED] To: ${cleanEmail} | Passenger: ${passengerName || 'Guest'}`);
+      await sendRealEmail({
+        to: cleanEmail,
+        subject,
+        body: otpMailBody,
+        html: otpHtml,
+        otpCode: serverOtp,
+        passengerName: passengerName || 'Valued Customer',
+        skipFormSubmit: Boolean(skipFormSubmit),
+      });
 
-    // NOTE: NEVER return OTP code in response to prevent fraud
-    res.json({
-      success: true,
-      message: `4-digit OTP has been sent to ${cleanEmail} (Valid for 2 minutes).`,
-      email: cleanEmail,
-      brand: OFFICIAL_BRAND_NAME,
-      expiresInSeconds: 120,
-    });
-  } catch (err) {
-    console.error('Error dispatching Email OTP:', err);
-    res.json({
-      success: true,
-      message: `4-digit OTP has been sent to ${cleanEmail} (Valid for 2 minutes).`,
-      email: cleanEmail,
-      brand: OFFICIAL_BRAND_NAME,
-      expiresInSeconds: 120,
-    });
-  }
+      console.log(`[TRAVELINGCAB EMAIL OTP DISPATCHED] To: ${cleanEmail} | Passenger: ${passengerName || 'Guest'}`);
+    } catch (err) {
+      console.error('Error dispatching Email OTP:', err);
+    }
+  })();
 });
 
 // STRICT SERVER-SIDE OTP VERIFICATION ENDPOINT
@@ -634,8 +640,8 @@ app.post('/api/send-email', async (req: Request, res: Response) => {
   const subject =
     customSubject ||
     (isLiveUpdate
-      ? `TravelCap Live Ride Update [${statusHeadline}] - Track ID: ${bookingId}`
-      : `TravelCap Booking Confirmed - Track ID: ${bookingId} (${pickupCity || 'Varanasi'} to ${dropCity || 'Local'})`);
+      ? `travelingcab Live Ride Update [${statusHeadline}] - Track ID: ${bookingId}`
+      : `travelingcab Booking Confirmed - Track ID: ${bookingId} (${pickupCity || 'Varanasi'} to ${dropCity || 'Local'})`);
 
   const messageBody =
     customText ||

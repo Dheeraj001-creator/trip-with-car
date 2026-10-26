@@ -175,9 +175,6 @@ export const FleetSection: React.FC<FleetSectionProps> = ({
                         {car.modelNames}
                       </p>
                     </div>
-                    <span className="text-[8px] sm:text-[9.5px] font-black px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 uppercase shrink-0">
-                      ₹{flatDiscount} OFF
-                    </span>
                   </div>
 
                   {/* Interactive 12 Seater / 26 Seater Option for Force Tempo Traveller */}
@@ -224,11 +221,11 @@ export const FleetSection: React.FC<FleetSectionProps> = ({
                   </div>
                 </div>
 
-                {/* Bottom Action Row with Strikethrough Discount Rate, + Taxes & Charges & Book Cab Button */}
+                {/* Bottom Action Row with Rate, + Taxes & Charges + Discount & Book Cab Button */}
                 <div className="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-end justify-between gap-2 sm:gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-[10.5px] sm:text-xs font-mono font-bold text-slate-400 dark:text-slate-500 line-through decoration-rose-500 decoration-2">
+                    <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                      <span className="text-[11px] sm:text-xs font-bold font-mono line-through text-slate-400 decoration-rose-500">
                         ₹{strikeRate}/KM
                       </span>
                       <span className="price-badge-chatkar px-2 py-0.5 rounded-lg text-xs sm:text-sm leading-tight inline-flex items-baseline gap-0.5 shrink-0">
@@ -236,11 +233,14 @@ export const FleetSection: React.FC<FleetSectionProps> = ({
                         <span className="text-[9px] sm:text-[10px] font-bold opacity-95">/KM</span>
                       </span>
                     </div>
-                    <span className={`text-[9.5px] sm:text-[10.5px] font-bold block ${
+                    <div className={`text-[9.5px] sm:text-[10.5px] font-bold flex items-center gap-1.5 flex-wrap ${
                       isLight ? 'text-blue-700' : 'text-blue-400'
                     }`}>
-                      + ₹500 Taxes &amp; Charges
-                    </span>
+                      <span>+ ₹500 Taxes &amp; Charges</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                        (Discount -₹{flatDiscount})
+                      </span>
+                    </div>
                   </div>
 
                   <button

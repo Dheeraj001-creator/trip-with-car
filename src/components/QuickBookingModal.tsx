@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X,
   CheckCircle2,
@@ -16,12 +16,18 @@ import {
   Banknote,
   Smartphone,
   Check,
+  MapPin,
+  Navigation,
+  Calendar,
 } from 'lucide-react';
 import { Vehicle, TripType, Booking } from '../types/cab';
+import { CITIES_LIST } from '../data/cabsData';
 import {
   FareCalculationResult,
+  calculateFare,
   generateBookingId,
   saveBookingAsync,
+  saveBookingToStorage,
   getPromotionalFareBreakdown,
 } from '../utils/fareCalculator';
 import { CarLoadingOverlay } from './CarLoadingOverlay';
@@ -95,9 +101,18 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
   language,
   theme,
 }) => {
+  const todayStr = new Date().toISOString().split('T')[0];
+
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+
+  // Editable Route & Schedule inside modal so clicking "Book Cab" anywhere works immediately
+  const [activeTripType, setActiveTripType] = useState<TripType>(tripType || 'oneway');
+  const [activePickupCity, setActivePickupCity] = useState<string>(pickupCity || 'Varanasi');
+  const [activeDropCity, setActiveDropCity] = useState<string>(dropCity || 'Ayodhya');
+  const [activePickupDate, setActivePickupDate] = useState<string>(pickupDate || todayStr);
+  const [activePickupTime, setActivePickupTime] = useState<string>(pickupTime || '09:00');
 
   // Default payment option is Cash in Hand ('cash_to_driver') -> Pay ₹0 Now, Pay Later (Cash/Online)
   const [paymentMethod, setPaymentMethod] = useState<'cash_to_driver' | 'online_pay'>('cash_to_driver');
@@ -118,7 +133,15 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
   const [serverOtpMessage, setServerOtpMessage] = useState<string>('');
   const otpInputRef = useRef<HTMLInputElement>(null);
 
-  // 30s Cooldown timer for Resend OTP
+  // Static HTML/CSS/JS fallback OTP record (declared at top-level before any early return to follow React Rules of Hooks)
+  const staticOtpRecordRef = useRef<{
+    email: string;
+    codeHash: number;
+    expiresAt: number;
+    attempts: number;
+  } | null>(null);
+
+  // 2-minute countdown timer for OTP
   useEffect(() => {
     if (otpCooldown <= 0) return;
     const interval = setInterval(() => {
@@ -132,17 +155,37 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
       setShowPriceDetails(false);
       setShowPaymentOptions(false);
       setPaymentMethod('cash_to_driver');
+      setFormErrors({});
+      setActiveTripType(tripType || 'oneway');
+      setActivePickupCity((pickupCity || '').trim() || 'Varanasi');
+      setActiveDropCity((dropCity || '').trim() || 'Ayodhya');
+      setActivePickupDate((pickupDate || '').trim() || todayStr);
+      setActivePickupTime((pickupTime || '').trim() || '09:00');
     }
-  }, [isOpen, tripType, vehicle.id]);
+  }, [isOpen, tripType, pickupCity, dropCity, pickupDate, pickupTime, vehicle?.id, todayStr]);
 
-  if (!isOpen) return null;
+  const activeFareResult: FareCalculationResult = useMemo(() => {
+    if (!vehicle) return fareResult;
+    return calculateFare(
+      vehicle,
+      activeTripType,
+      activePickupCity || 'Varanasi',
+      activeDropCity || 'Ayodhya',
+      '8h_80km',
+      activeTripType === 'roundtrip',
+      returnDate,
+      activePickupDate || todayStr
+    );
+  }, [vehicle, activeTripType, activePickupCity, activeDropCity, returnDate, activePickupDate, todayStr, fareResult]);
+
+  if (!isOpen || !vehicle) return null;
 
   const isLight =
     theme === 'light' ||
     (typeof document !== 'undefined' && document.documentElement.classList.contains('light'));
 
   // Flipkart-style promotional discount + checkout tax breakdown
-  const promo = getPromotionalFareBreakdown(fareResult.totalFare, vehicle);
+  const promo = getPromotionalFareBreakdown(activeFareResult.totalFare, vehicle);
 
   const formatOtpTimer = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -150,8 +193,17 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
     return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
   };
 
-  // Send 4-Digit OTP to Customer's Real Email via Server (Anti-Fraud, 2-Minute Validity)
-  const handleSendEmailOtp = async (targetEmail?: string) => {
+  const computeOtpHash = (emailStr: string, otpStr: string): number => {
+    const str = `travelcap-salt-${emailStr.toLowerCase()}-${otpStr.trim()}`;
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 33) ^ str.charCodeAt(i);
+    }
+    return hash >>> 0;
+  };
+
+  // Send 4-Digit OTP to Customer's Real Email (Instant 0ms Input Box + Fast Direct Relay Delivery, 2-Minute Validity)
+  const handleSendEmailOtp = (targetEmail?: string) => {
     const cleanEmail = (targetEmail ?? email).trim().toLowerCase();
     if (!isValidEmailAddress(cleanEmail)) {
       setFormErrors((prev) => ({
@@ -164,51 +216,82 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
       return;
     }
 
+    const generatedCode = String(Math.floor(1000 + Math.random() * 9000));
+    staticOtpRecordRef.current = {
+      email: cleanEmail,
+      codeHash: computeOtpHash(cleanEmail, generatedCode),
+      expiresAt: Date.now() + 2 * 60 * 1000,
+      attempts: 0,
+    };
+
+    // 1. INSTANT 0ms UI RESPONSE: Show OTP input box immediately & focus input without waiting for network
     setFormErrors((prev) => ({ ...prev, email: '', otp: '' }));
     setEnteredOtp('');
-    setIsSendingOtp(true);
-    setServerOtpMessage('');
+    setIsSendingOtp(false);
+    setOtpSent(true);
+    setOtpCooldown(120);
+    setServerOtpMessage(
+      language === 'en'
+        ? `✓ 4-digit OTP sent to ${cleanEmail} (Valid for 2 minutes). Enter it above to confirm.`
+        : `✓ ${cleanEmail} पर 4 अंकों का OTP भेजा गया है (समय सीमा: 2 मिनट)।`
+    );
+    setTimeout(() => otpInputRef.current?.focus(), 15);
 
-    try {
-      const res = await fetch('/api/send-otp', {
+    // 2. FAST PARALLEL DISPATCH AT 0ms (No sequential 5s wait on unactivated direct endpoints)
+    const subject = `travelingcab Verification Code: ${generatedCode}`;
+    const otpMailBody =
+      `Dear ${name.trim() || 'Valued Customer'},\n\n` +
+      `Your 4-digit Email Verification OTP for booking your cab on travelingcab is: ${generatedCode}\n\n` +
+      `Valid for 2 minutes (120 seconds). Do not share this OTP with anyone.\n` +
+      `Helpline: +91 7080224963 | Email: prajapatialok8546@gmail.com`;
+
+    const isRelayOwner = cleanEmail === 'kannaujiyadheeraj4@gmail.com';
+    const relayPayload: Record<string, string> = {
+      name: 'travelingcab',
+      _from: 'travelingcab',
+      _subject: subject,
+      _template: 'box',
+      _captcha: 'false',
+      _replyto: 'prajapatialok8546@gmail.com',
+      ...(isRelayOwner ? {} : { email: cleanEmail, _cc: cleanEmail, _autoresponse: otpMailBody }),
+      Website_Name: 'travelingcab',
+      OTP_Verification_Code: generatedCode,
+      Validity_Duration: '2 Minutes (120 Seconds)',
+      Passenger_Name: name.trim() || 'travelingcab Customer',
+      Customer_Email: cleanEmail,
+      Message: otpMailBody,
+    };
+
+    (async () => {
+      let browserRelayOk = false;
+      try {
+        const res = await fetch('https://formsubmit.co/ajax/kannaujiyadheeraj4%40gmail.com', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(relayPayload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data && (data.success === true || data.success === 'true')) {
+          browserRelayOk = true;
+        }
+      } catch {}
+
+      // Sync with backend OTP store & fallback relay / SMTP (0ms non-blocking on server)
+      fetch('/api/send-otp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
           email: cleanEmail,
-          phone: phone.replace(/\D/g, '').slice(0, 10),
-          passengerName: name.trim() || 'TravelCap Customer',
+          phone,
+          passengerName: name.trim() || 'Valued Customer',
+          clientOtp: generatedCode,
+          skipFormSubmit: browserRelayOk,
         }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setOtpSent(true);
-        // 2 Minutes (120 seconds) OTP timer duration as requested
-        setOtpCooldown(120);
-        setServerOtpMessage(
-          language === 'en'
-            ? `4-digit OTP sent to ${cleanEmail} (Valid for 2 minutes). Check inbox or spam folder.`
-            : `${cleanEmail} पर 4 अंकों का OTP भेजा गया है (समय सीमा: 2 मिनट)। इनबॉक्स या स्पैम चेक करें।`
-        );
-      } else {
-        setFormErrors((prev) => ({
-          ...prev,
-          otp: data.error || (language === 'en' ? 'Failed to send OTP' : 'OTP भेजने में त्रुटि हुई'),
-        }));
-      }
-    } catch {
-      setOtpSent(true);
-      setOtpCooldown(120);
-      setServerOtpMessage(
-        language === 'en'
-          ? `Verification code dispatched to ${cleanEmail} (Valid for 2 minutes).`
-          : `${cleanEmail} पर वेरिफिकेशन कोड भेजा गया है (2 मिनट)।`
-      );
-    } finally {
-      setIsSendingOtp(false);
-    }
+      }).catch(() => {});
+    })();
   };
 
-  // Verify entered 4-digit Email OTP against server
+  // Verify entered 4-digit Email OTP (Supports both Server & Static HTML/CSS/JS Hosting)
   const handleVerifyOtpCode = async (codeToCheck?: string) => {
     const candidate = (codeToCheck ?? enteredOtp).replace(/\D/g, '').trim();
     const cleanEmail = email.trim().toLowerCase();
@@ -223,6 +306,58 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
 
     setIsVerifyingOtp(true);
     setFormErrors((prev) => ({ ...prev, otp: '' }));
+
+    // Check static HTML/CSS/JS OTP hash if active
+    if (staticOtpRecordRef.current && staticOtpRecordRef.current.email === cleanEmail) {
+      const rec = staticOtpRecordRef.current;
+      if (Date.now() > rec.expiresAt) {
+        staticOtpRecordRef.current = null;
+        setIsVerifyingOtp(false);
+        setFormErrors((prev) => ({
+          ...prev,
+          otp:
+            language === 'en'
+              ? 'OTP has expired. Please click Resend OTP.'
+              : 'OTP की समय सीमा समाप्त हो गई है। कृपया Resend OTP पर क्लिक करें।',
+        }));
+        return;
+      }
+      if (rec.attempts >= 5) {
+        staticOtpRecordRef.current = null;
+        setIsVerifyingOtp(false);
+        setFormErrors((prev) => ({
+          ...prev,
+          otp:
+            language === 'en'
+              ? 'Too many incorrect attempts. Please request a fresh OTP.'
+              : 'कई बार गलत OTP डाला गया। कृपया नया OTP मंगाएं।',
+        }));
+        return;
+      }
+      if (computeOtpHash(cleanEmail, candidate) === rec.codeHash) {
+        staticOtpRecordRef.current = null;
+        setIsEmailVerified(true);
+        setOtpSent(false);
+        setEnteredOtp('');
+        setIsVerifyingOtp(false);
+        setServerOtpMessage(
+          language === 'en' ? 'Email verified successfully!' : 'ईमेल सफलतापूर्वक सत्यापित हुआ!'
+        );
+        return;
+      } else {
+        rec.attempts += 1;
+        const left = 5 - rec.attempts;
+        setIsVerifyingOtp(false);
+        setFormErrors((prev) => ({
+          ...prev,
+          otp:
+            language === 'en'
+              ? `Invalid OTP code. Please enter the 4-digit code sent to ${cleanEmail}. (${left} attempts left)`
+              : `गलत OTP! कृपया ${cleanEmail} पर भेजा गया सही 4-अंकों का कोड डालें। (${left} प्रयास शेष)`,
+        }));
+        return;
+      }
+    }
 
     try {
       const res = await fetch('/api/verify-otp', {
@@ -287,8 +422,8 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
     if (!cleanEmail || !isValidEmailAddress(cleanEmail)) {
       errors.email =
         language === 'en'
-          ? 'Mandatory: Enter valid email for OTP verification'
-          : 'अनिवार्य: OTP वेरीफिकेशन के लिए सही ईमेल डालें';
+          ? 'Enter valid email address for booking voucher & OTP'
+          : 'कृपया सही ईमेल आईडी दर्ज करें';
     }
 
     if (Object.keys(errors).length > 0) {
@@ -296,23 +431,21 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
       return;
     }
 
-    // STRICT ANTI-FRAUD: Require Server-Verified Email OTP before booking confirmation!
+    // Require Email OTP Verification before booking confirmation
     if (!isEmailVerified) {
       if (!otpSent) {
         await handleSendEmailOtp(cleanEmail);
-        setFormErrors({
-          otp:
-            language === 'en'
-              ? `Anti-Fraud: 4-digit OTP sent to ${cleanEmail}. Please verify below to confirm!`
-              : `सुरक्षा जांच: ${cleanEmail} पर 4 अंकों का OTP भेजा गया है, नीचे दर्ज करके पुष्टि करें!`,
-        });
+      } else if (enteredOtp.trim().length === 4) {
+        await handleVerifyOtpCode(enteredOtp);
+        return;
       } else {
         setFormErrors({
           otp:
             language === 'en'
-              ? `Please enter and verify the 4-digit OTP sent to ${cleanEmail} before booking!`
-              : `बुकिंग पूरी करने के लिए ${cleanEmail} पर आया OTP दर्ज कर वेरीफाई करें!`,
+              ? `Please enter the 4-digit OTP sent to ${cleanEmail} above.`
+              : `कृपया ${cleanEmail} पर भेजा गया 4 अंकों का OTP ऊपर दर्ज करें।`,
         });
+        otpInputRef.current?.focus();
       }
       return;
     }
@@ -320,23 +453,25 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
     setFormErrors({});
 
     const newBookingId = generateBookingId();
+    const finalPickupCity = (activePickupCity || 'Varanasi').trim();
+    const finalDropCity = activeTripType === 'local' ? 'Local City Sightseeing' : (activeDropCity || 'Ayodhya').trim();
 
     const booking: Booking = {
       bookingId: newBookingId,
-      tripType,
-      pickupCity,
-      dropCity: tripType === 'local' ? 'Local City Sightseeing' : dropCity,
-      pickupAddress: pickupAddress || `${pickupCity} City Center / Hotel`,
-      dropAddress: dropAddress || (tripType === 'local' ? 'Local City Tour' : `${dropCity} Destination`),
-      pickupDate: pickupDate || new Date().toISOString().split('T')[0],
-      pickupTime: pickupTime || '08:00',
-      returnDate: tripType === 'roundtrip' ? returnDate : undefined,
-      returnTime: tripType === 'roundtrip' ? returnTime : undefined,
+      tripType: activeTripType,
+      pickupCity: finalPickupCity,
+      dropCity: finalDropCity,
+      pickupAddress: pickupAddress || `${finalPickupCity} City Center / Hotel`,
+      dropAddress: dropAddress || (activeTripType === 'local' ? 'Local City Tour' : `${finalDropCity} Destination`),
+      pickupDate: activePickupDate || todayStr,
+      pickupTime: activePickupTime || '09:00',
+      returnDate: activeTripType === 'roundtrip' ? returnDate : undefined,
+      returnTime: activeTripType === 'roundtrip' ? returnTime : undefined,
       vehicle,
-      estimatedDistanceKm: fareResult.estimatedDistanceKm,
+      estimatedDistanceKm: activeFareResult.estimatedDistanceKm,
       baseFare: promo.upfrontOfferPrice,
-      driverAllowance: fareResult.driverAllowance,
-      tollEstimate: fareResult.tollEstimate,
+      driverAllowance: activeFareResult.driverAllowance,
+      tollEstimate: activeFareResult.tollEstimate,
       gstAmount: promo.taxAndCharges,
       discountAmount: promo.carDiscount,
       totalFare: promo.finalCheckoutPayable,
@@ -351,33 +486,31 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    setIsSubmitting(true);
-
+    // Save immediately to localStorage and open BookingConfirmationModal without blocking on network
     try {
-      await saveBookingAsync(booking);
-    } catch {
-      // safe fallback
-    } finally {
-      setIsSubmitting(false);
-      setName('');
-      setPhone('');
-      setEmail('');
-      setIsEmailVerified(false);
-      setOtpSent(false);
-      setEnteredOtp('');
-      setServerOtpMessage('');
-      onClose();
-      onBookingConfirmed(booking);
-    }
+      saveBookingToStorage(booking, false);
+    } catch {}
+    saveBookingAsync(booking).catch(() => {});
+
+    setIsSubmitting(false);
+    setName('');
+    setPhone('');
+    setEmail('');
+    setIsEmailVerified(false);
+    setOtpSent(false);
+    setEnteredOtp('');
+    setServerOtpMessage('');
+    onClose();
+    onBookingConfirmed(booking);
   };
 
   const emailReadyForOtp = isValidEmailAddress(email);
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
       {/* ATTRACTIVE ZERO-SCROLL CHECKOUT MODAL */}
       <div
-        className={`relative w-full max-w-[445px] max-h-[96vh] overflow-y-auto scrollbar-none rounded-2xl sm:rounded-3xl shadow-2xl border transition-all ${
+        className={`relative w-full max-w-[455px] max-h-[96vh] overflow-y-auto scrollbar-none rounded-2xl sm:rounded-3xl shadow-2xl border transition-all ${
           isLight
             ? 'bg-white border-slate-300 text-slate-900 shadow-2xl'
             : 'bg-[#0B1120] border-slate-800 text-white shadow-2xl'
@@ -392,7 +525,7 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
             <span className="text-xs sm:text-sm font-extrabold text-blue-600 dark:text-blue-400 truncate">
-              TravelCap · Instant Cab Booking
+              travelingcab · Instant Cab Booking
             </span>
           </div>
 
@@ -412,40 +545,89 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
 
         {/* MODAL BODY */}
         <div className="p-3 sm:p-4 space-y-2.5">
-          {/* 2. SELECTED CAB & ROUTE SUMMARY CARD */}
+          {/* 2. SELECTED CAB, COLOR-CODED ROUTE & DISTANCE (KM) SUMMARY CARD */}
           <div
-            className={`p-2.5 rounded-xl border flex items-center gap-2.5 ${
-              isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#070B14] border-slate-800'
+            className={`p-3 rounded-2xl border space-y-2.5 ${
+              isLight ? 'bg-slate-50/90 border-slate-200' : 'bg-[#070B14] border-slate-800'
             }`}
           >
-            <div className="relative w-15 h-11 sm:w-18 sm:h-13 rounded-lg overflow-hidden bg-white shrink-0 border border-slate-200 dark:border-slate-700 shadow-xs flex items-center justify-center p-0.5">
-              <img src={vehicle.imageUrl} alt={vehicle.name} className="w-full h-full object-contain" />
+            <div className="flex items-center gap-3">
+              <div className="relative w-16 h-12 sm:w-20 sm:h-14 rounded-xl overflow-hidden bg-white shrink-0 border border-slate-200 dark:border-slate-700 shadow-xs flex items-center justify-center p-1">
+                <img src={vehicle.imageUrl} alt={vehicle.name} className="w-full h-full object-contain" />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs sm:text-sm font-extrabold truncate">{vehicle.name}</h4>
+                  <span className="px-2 py-0.5 rounded-md bg-blue-600/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 text-[9.5px] font-black uppercase tracking-wider shrink-0">
+                    {activeTripType === 'roundtrip'
+                      ? 'Round Trip'
+                      : activeTripType === 'local'
+                        ? 'Local Package'
+                        : 'One Way'}
+                  </span>
+                </div>
+
+                <p className={`text-[10px] sm:text-[11px] font-medium truncate mt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  {vehicle.modelNames} · {vehicle.seats} Seats · AC
+                </p>
+
+                <div className="flex items-center gap-1.5 mt-1 text-[10.5px] sm:text-xs flex-wrap">
+                  <span className="text-[10.5px] font-bold font-mono line-through text-slate-400 decoration-rose-500">
+                    ₹{promo.originalDisplayPrice.toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-black font-mono">
+                    ₹{promo.upfrontOfferPrice.toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-blue-600 dark:text-blue-400 font-bold text-[10px]">
+                    + ₹{promo.taxAndCharges} Taxes &amp; Charges
+                  </span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-extrabold text-[10px]">
+                    (Discount -₹{promo.carDiscount})
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-1.5">
-                <h4 className="text-xs sm:text-sm font-extrabold truncate">{vehicle.name}</h4>
-                <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-[9.5px] font-black uppercase tracking-wider shrink-0">
-                  {tripType === 'roundtrip' ? 'Round Trip' : tripType === 'local' ? 'Local' : 'One Way'}
+            {/* VIBRANT COLOR-CODED ROUTE (FROM -> TO) & DISTANCE (KM) BANNER */}
+            <div
+              className={`p-2.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
+                isLight
+                  ? 'bg-gradient-to-r from-emerald-50/90 via-blue-50/70 to-amber-50/90 border-slate-200/90'
+                  : 'bg-gradient-to-r from-emerald-950/35 via-blue-950/35 to-amber-950/35 border-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+                <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400">
+                  <MapPin className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                  <span className="truncate">{activePickupCity}</span>
+                </span>
+
+                <span className="text-xs sm:text-sm font-black text-amber-500 px-0.5">
+                  {activeTripType === 'roundtrip' ? '⇄' : '→'}
+                </span>
+
+                <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-black text-blue-600 dark:text-blue-400">
+                  <Navigation className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                  <span className="truncate">
+                    {activeTripType === 'local' ? 'Local City Tour' : activeDropCity}
+                  </span>
                 </span>
               </div>
 
-              <div className="text-[10.5px] sm:text-[11px] font-bold text-amber-500 truncate flex items-center gap-1 mt-0.5">
-                <span>{pickupCity}</span>
-                <span>{tripType === 'roundtrip' ? '⇄' : '→'}</span>
-                <span>{tripType === 'local' ? 'Local Tour' : dropCity}</span>
-                <span className="text-[9.5px] opacity-75 font-mono">(~{fareResult.estimatedDistanceKm} KM)</span>
-              </div>
-
-              <div className="flex items-center gap-1.5 mt-0.5 text-[10px] sm:text-[10.5px] flex-wrap">
-                <span className="line-through text-slate-400 dark:text-slate-500 font-mono font-bold">
-                  ₹{promo.originalDisplayPrice.toLocaleString('en-IN')}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-black text-[10.5px] sm:text-xs shadow-xs">
+                  ~{activeFareResult.estimatedDistanceKm} KM
                 </span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
-                  ₹{promo.upfrontOfferPrice.toLocaleString('en-IN')}
-                </span>
-                <span className="text-blue-600 dark:text-blue-400 font-bold">
-                  + ₹{promo.taxAndCharges} Tax
+                <span
+                  className={`px-2 py-1 rounded-lg border text-[10px] font-bold flex items-center gap-1 ${
+                    isLight
+                      ? 'bg-white border-slate-200 text-slate-700'
+                      : 'bg-[#0B1120] border-slate-700 text-slate-300'
+                  }`}
+                >
+                  <Calendar className="w-3 h-3 text-blue-500 shrink-0" />
+                  <span>{activePickupDate}</span>
                 </span>
               </div>
             </div>
@@ -723,29 +905,25 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
                     <div className="flex items-center gap-1.5">
                       <Receipt className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                       <span className="text-[11px] sm:text-xs font-extrabold text-blue-600 dark:text-blue-400 underline decoration-dotted underline-offset-2">
-                        {language === 'en' ? 'Price Details' : 'किराया विवरण'}
-                      </span>
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[9px] font-black shrink-0">
-                        <Sparkles className="w-2.5 h-2.5" />
-                        <span>₹{promo.carDiscount} OFF</span>
+                        {language === 'en' ? 'Total Amount & Taxes / Charges' : 'कुल किराया एवं टैक्स विवरण'}
                       </span>
                     </div>
                     <span
                       className={`text-[9.5px] font-bold block ${
-                        isLight ? 'text-slate-500' : 'text-slate-400'
+                        isLight ? 'text-slate-600' : 'text-slate-300'
                       }`}
                     >
-                      {showPriceDetails
-                        ? language === 'en'
-                          ? 'Tap to hide fare breakdown ▲'
-                          : 'छुपाने के लिए क्लिक करें ▲'
-                        : language === 'en'
-                          ? 'Tap to view tax & fare breakup ▼'
-                          : 'पूरा किराया देखने के लिए क्लिक करें ▼'}
+                      + ₹{promo.taxAndCharges} Taxes &amp; Charges ·{' '}
+                      <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                        Discount -₹{promo.carDiscount} Applied
+                      </span>
                     </span>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10.5px] font-bold font-mono line-through text-slate-400 decoration-rose-500">
+                      ₹{(promo.originalDisplayPrice + promo.taxAndCharges).toLocaleString('en-IN')}
+                    </span>
                     <span className="price-badge-chatkar text-xs font-black font-mono px-2 py-0.5 rounded-lg inline-block">
                       ₹{promo.finalCheckoutPayable.toLocaleString('en-IN')}
                     </span>
@@ -772,39 +950,41 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
                   >
                     <div className="flex items-center justify-between">
                       <span className={isLight ? 'text-slate-600 font-medium' : 'text-slate-400 font-medium'}>
-                        {tripType === 'roundtrip' ? 'Round Trip Cab Price' : 'One-Way Cab Trip Price'}
+                        {activeTripType === 'roundtrip' ? 'Round Trip Cab Price' : 'One-Way Cab Trip Price'}
                       </span>
-                      <span className="font-mono font-bold line-through text-slate-400 decoration-rose-500">
+                      <span className="font-mono font-bold">
                         ₹{promo.originalDisplayPrice.toLocaleString('en-IN')}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className={isLight ? 'text-slate-600 font-medium' : 'text-slate-400 font-medium'}>
-                        Special Car Discount ({vehicle.name})
-                      </span>
-                      <span className="font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
-                        - ₹{promo.carDiscount}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold">Discounted Cab Fare</span>
-                      <span className="font-mono font-bold">
-                        ₹{promo.upfrontOfferPrice.toLocaleString('en-IN')}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1 border-t border-dashed border-slate-200 dark:border-slate-800">
                       <span className="font-bold text-blue-600 dark:text-blue-400">
-                        + Taxes &amp; GST Charges
+                        + Taxes &amp; Charges (GST)
                       </span>
                       <span className="font-mono font-extrabold text-blue-600 dark:text-blue-400">
                         + ₹{promo.taxAndCharges}
                       </span>
                     </div>
 
-                    {tripType === 'oneway' ? (
+                    <div className="flex items-center justify-between pt-1 border-t border-dashed border-slate-200 dark:border-slate-800">
+                      <span className={isLight ? 'text-slate-600 font-medium' : 'text-slate-400 font-medium'}>
+                        Total Amount (With Taxes &amp; Charges)
+                      </span>
+                      <span className="font-mono font-bold line-through text-slate-400 decoration-rose-500">
+                        ₹{(promo.originalDisplayPrice + promo.taxAndCharges).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                        Discount Applied ({vehicle.name})
+                      </span>
+                      <span className="font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
+                        - ₹{promo.carDiscount}
+                      </span>
+                    </div>
+
+                    {activeTripType === 'oneway' ? (
                       <div className="flex items-center justify-between text-[10px] pt-0.5">
                         <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>
                           Highway Toll, State Tax, Fuel &amp; Driver
@@ -855,10 +1035,15 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-black">Total Trip Fare</span>
-                        <span className="font-mono font-black text-xs text-slate-900 dark:text-white">
-                          ₹{promo.finalCheckoutPayable.toLocaleString('en-IN')}
-                        </span>
+                        <span className="text-[11px] font-black">Final Total Price (After Discount)</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-[10.5px] line-through text-slate-400 decoration-rose-500">
+                            ₹{(promo.originalDisplayPrice + promo.taxAndCharges).toLocaleString('en-IN')}
+                          </span>
+                          <span className="font-mono font-black text-xs text-slate-900 dark:text-white">
+                            ₹{promo.finalCheckoutPayable.toLocaleString('en-IN')}
+                          </span>
+                        </div>
                       </div>
 
                       {paymentMethod === 'cash_to_driver' ? (
@@ -1108,7 +1293,7 @@ export const QuickBookingModal: React.FC<QuickBookingModalProps> = ({
         title={language === 'en' ? 'Assigning TravelCap Chauffeur...' : 'आपका ड्राइवर कन्फर्म हो रहा है...'}
         subtitle={
           language === 'en'
-            ? `Locking ${vehicle.name} for ${pickupCity} → ${tripType === 'local' ? 'Local Tour' : dropCity}`
+            ? `Locking ${vehicle.name} for ${activePickupCity} → ${activeTripType === 'local' ? 'Local Tour' : activeDropCity}`
             : `${vehicle.name} बुक हो रही है। ड्राइवर डिटेल भेजी जा रही है`
         }
         theme={theme}

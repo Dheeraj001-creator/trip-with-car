@@ -87,7 +87,16 @@ export default function App() {
   const [incomingMessageAlert, setIncomingMessageAlert] = useState<Booking | null>(null);
   const [showTrackModal, setShowTrackModal] = useState(false);
   const [trackingBookingId, setTrackingBookingId] = useState<string | undefined>(undefined);
-  const [forceOpenMobilePopup, setForceOpenMobilePopup] = useState<boolean>(true);
+  const [forceOpenMobilePopup, setForceOpenMobilePopup] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const search = window.location.search || '';
+    const hash = window.location.hash || '';
+    const path = window.location.pathname || '';
+    if (search.includes('track=') || search.includes('admin=true') || hash === '#admin' || path === '/admin') {
+      return false;
+    }
+    return true;
+  });
   const [popupTrigger, setPopupTrigger] = useState<number>(1);
   const [showDriverModal, setShowDriverModal] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
@@ -236,11 +245,39 @@ export default function App() {
   };
 
   const handleSelectVehicle = (v: Vehicle) => {
-    setVehicleCat(v.category);
-    setTripType('oneway');
-    setActiveSection('booking');
-    setForceOpenMobilePopup(true);
-    setPopupTrigger(prev => prev + 1);
+    setVehicleCat(v.id);
+    if (tripType !== 'local' && (!toCity || !toCity.trim())) {
+      setActiveSection('booking');
+      setTripType('oneway');
+      setForceOpenMobilePopup(true);
+      setPopupTrigger((prev) => prev + 1);
+      window.scrollTo({ top: 80, behavior: 'smooth' });
+      return;
+    }
+    const todayStr = new Date().toISOString().split('T')[0];
+    const activeFrom = fromCity || 'Varanasi';
+    const activeTo = toCity || 'Ayodhya';
+    const activeDate = searchPickupDate || todayStr;
+    const activeTime = searchPickupTime || '09:00';
+    const fareRes = calculateFare(
+      v,
+      tripType || 'oneway',
+      activeFrom,
+      activeTo,
+      '8h_80km',
+      tripType === 'roundtrip',
+      searchReturnDate || undefined,
+      activeDate
+    );
+    setDirectRouteBooking({
+      vehicle: v,
+      tripType: tripType || 'oneway',
+      pickupCity: activeFrom,
+      dropCity: activeTo,
+      pickupDate: activeDate,
+      pickupTime: activeTime,
+      fareResult: fareRes,
+    });
   };
 
   const handleBookRouteFromPopular = (data: {
@@ -299,7 +336,10 @@ export default function App() {
           }
           window.scrollTo({ top: 80, behavior: 'smooth' });
         }}
-        onOpenTrackBooking={() => setShowTrackModal(true)}
+        onOpenTrackBooking={() => {
+          setTrackingBookingId(undefined);
+          setShowTrackModal(true);
+        }}
         onOpenDriverPartner={() => setShowDriverModal(true)}
         onOpenAdmin={() => setShowAdminDashboard(true)}
         language={language}
@@ -345,7 +385,7 @@ export default function App() {
                     : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
                 }`}>
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Flat ₹200–₹300 OFF on Intercity Cabs · 24/7 Dispatch</span>
+                  <span>travelingcab · 24/7 Outstation &amp; Local Dispatch</span>
                 </div>
                 <h1 className={`text-2xl sm:text-4xl lg:text-[42px] font-black tracking-tight leading-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>
                   Book Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-500 dark:from-blue-400 dark:to-indigo-400">One-Way &amp; Outstation</span> Cab
@@ -392,11 +432,10 @@ export default function App() {
               <DestinationSlider
                 onSelectRoute={handleSelectRoute}
                 onSelectVehicle={(category) => {
-                  setVehicleCat(category);
-                  setTripType('oneway');
-                  setActiveSection('booking');
-                  setForceOpenMobilePopup(true);
-                  setPopupTrigger(prev => prev + 1);
+                  const matched =
+                    VEHICLES.find((v) => v.id === category || v.category === category) ||
+                    VEHICLES[0];
+                  handleSelectVehicle(matched);
                 }}
                 theme={theme}
               />
@@ -473,7 +512,7 @@ export default function App() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between text-[10px] text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-wider mb-1">
-                <span>💬 MESSAGES · TRAVELCAP BOOKING SMS</span>
+                <span>💬 MESSAGES · TRAVELINGCAB BOOKING SMS</span>
                 <button 
                   type="button"
                   onClick={() => setIncomingMessageAlert(null)}
@@ -486,7 +525,7 @@ export default function App() {
                 Cab Confirmed! Track ID: <span className="font-mono text-amber-500 font-black">{incomingMessageAlert.bookingId}</span>
               </div>
               <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-snug">
-                Namaste {incomingMessageAlert.passengerName}, your cab from {incomingMessageAlert.pickupCity} → {incomingMessageAlert.dropCity || 'Destination'} on {incomingMessageAlert.pickupDate} is confirmed. Mail sent from prajapatialok8546@gmail.com.
+                Namaste {incomingMessageAlert.passengerName}, your cab from {incomingMessageAlert.pickupCity} → {incomingMessageAlert.dropCity || 'Destination'} on {incomingMessageAlert.pickupDate} is confirmed. Mail sent from travelingcab (prajapatialok8546@gmail.com).
               </p>
               <div className="flex items-center gap-2 mt-2.5">
                 <button
@@ -502,7 +541,7 @@ export default function App() {
                   <span>Live Track Ride →</span>
                 </button>
                 <a
-                  href={`https://wa.me/91${String(incomingMessageAlert.passengerPhone || '').replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`🚕 *TRAVELCAP RESERVATION CONFIRMED*\n📋 *Booking Track ID:* ${incomingMessageAlert.bookingId}\n👤 *Passenger:* ${incomingMessageAlert.passengerName || 'Guest'}\n📍 *Route:* ${incomingMessageAlert.pickupCity || 'Varanasi'} → ${incomingMessageAlert.dropCity || 'Local'}\n📅 *Date:* ${incomingMessageAlert.pickupDate || ''} at ${incomingMessageAlert.pickupTime || ''}\n💰 *Fare:* ₹${incomingMessageAlert.totalFare || 0}\n🔍 *Live Track:* ${typeof window !== 'undefined' ? window.location.origin : ''}/?track=${incomingMessageAlert.bookingId}`)}`}
+                  href={`https://wa.me/91${String(incomingMessageAlert.passengerPhone || '').replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`🚕 *TRAVELINGCAB RESERVATION CONFIRMED*\n📋 *Booking Track ID:* ${incomingMessageAlert.bookingId}\n👤 *Passenger:* ${incomingMessageAlert.passengerName || 'Guest'}\n📍 *Route:* ${incomingMessageAlert.pickupCity || 'Varanasi'} → ${incomingMessageAlert.dropCity || 'Local'}\n📅 *Date:* ${incomingMessageAlert.pickupDate || ''} at ${incomingMessageAlert.pickupTime || ''}\n💰 *Fare:* ₹${incomingMessageAlert.totalFare || 0}\n🔍 *Live Track:* ${typeof window !== 'undefined' ? window.location.origin : ''}/?track=${incomingMessageAlert.bookingId}`)}`}
                   target="_blank"
                   rel="noreferrer"
                   className="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 text-xs font-bold transition-all cursor-pointer"
@@ -589,7 +628,10 @@ export default function App() {
           else if (sectionId === 'fleet') setActiveSection('fleet');
           window.scrollTo({ top: 100, behavior: 'smooth' });
         }}
-        onOpenTrackBooking={() => setShowTrackModal(true)}
+        onOpenTrackBooking={() => {
+          setTrackingBookingId(undefined);
+          setShowTrackModal(true);
+        }}
         onOpenDriverPartner={() => setShowDriverModal(true)}
         onOpenAdmin={() => setShowAdminDashboard(true)}
         language={language}

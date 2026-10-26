@@ -63,7 +63,6 @@ export const DestinationSlider: React.FC<DestinationSliderProps> = ({
         }`}
       >
         <img
-          key={currentCar.id}
           src={currentCar.imageUrl}
           alt={currentCar.name}
           className="w-full h-full object-contain object-center scale-105 transition-transform duration-500 group-hover:scale-110"

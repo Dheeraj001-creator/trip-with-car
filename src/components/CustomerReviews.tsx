@@ -10,7 +10,15 @@ export function getCustomReviews(): Review[] {
     const raw = localStorage.getItem(CUSTOM_REVIEWS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (r) =>
+        r &&
+        typeof r === 'object' &&
+        typeof r.id === 'string' &&
+        typeof r.name === 'string' &&
+        typeof r.comment === 'string'
+    );
   } catch {
     return [];
   }
@@ -55,7 +63,7 @@ export const CustomerReviews: React.FC<CustomerReviewsProps> = ({
   const allReviews = [...customReviews, ...REVIEWS];
   const totalReviewsCount = allReviews.length;
   const averageRating = totalReviewsCount > 0
-    ? (allReviews.reduce((acc, r) => acc + r.rating, 0) / totalReviewsCount).toFixed(1)
+    ? (allReviews.reduce((acc, r) => acc + (Number(r?.rating) || 5), 0) / totalReviewsCount).toFixed(1)
     : '4.9';
 
   const handleAddReview = (e: React.FormEvent) => {

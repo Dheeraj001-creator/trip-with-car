@@ -76,9 +76,9 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   const isLight = theme === 'light' || (typeof document !== 'undefined' && document.documentElement.classList.contains('light'));
 
   // Trip Selection state
-  const [tripType, setTripType] = useState<TripType>(initialTripType);
+  const [tripType, setTripType] = useState<TripType>(initialTripType || 'oneway');
   const [pickupCity, setPickupCity] = useState(initialFrom || 'Varanasi');
-  const [dropCity, setDropCity] = useState(initialTo);
+  const [dropCity, setDropCity] = useState(initialTo || '');
   const [pickupAddress, setPickupAddress] = useState('');
   const [dropAddress, setDropAddress] = useState('');
   
@@ -170,13 +170,14 @@ export const BookingForm: React.FC<BookingFormProps> = ({
     }
   }, [initialAutoSearch, initialFrom, initialTo]);
 
-  // Dates: start empty (no pre-filled date or time) so user explicitly selects them
+  // Dates: pre-filled with sensible defaults so user never hits missing date/time errors
   const todayStr = new Date().toISOString().split('T')[0];
+  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-  const [pickupDate, setPickupDate] = useState('');
-  const [pickupTime, setPickupTime] = useState('');
-  const [returnDate, setReturnDate] = useState('');
-  const [returnTime, setReturnTime] = useState('');
+  const [pickupDate, setPickupDate] = useState(todayStr);
+  const [pickupTime, setPickupTime] = useState('09:00');
+  const [returnDate, setReturnDate] = useState(tomorrowStr);
+  const [returnTime, setReturnTime] = useState('18:00');
 
   // Local Package specifics
   const [localPackage, setLocalPackage] = useState<'4h_40km' | '8h_80km' | '12h_120km'>('8h_80km');
@@ -187,8 +188,22 @@ export const BookingForm: React.FC<BookingFormProps> = ({
   const [flightNumber, setFlightNumber] = useState('');
 
   // Selected Vehicle
-  const defaultVehicle = VEHICLES.find(v => v.category === (initialVehicleCategory || 'sedan')) || VEHICLES[0];
+  const defaultVehicle =
+    VEHICLES.find(
+      (v) =>
+        v.category === (initialVehicleCategory || 'sedan') ||
+        v.id === (initialVehicleCategory || 'sedan')
+    ) || VEHICLES[0];
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle>(defaultVehicle);
+
+  useEffect(() => {
+    if (initialVehicleCategory) {
+      const matched = VEHICLES.find(
+        (v) => v.id === initialVehicleCategory || v.category === initialVehicleCategory
+      );
+      if (matched) setSelectedVehicle(matched);
+    }
+  }, [initialVehicleCategory]);
 
   // Quick Popup Modal state
   const [showQuickModal, setShowQuickModal] = useState<boolean>(false);
@@ -257,31 +272,19 @@ export const BookingForm: React.FC<BookingFormProps> = ({
       errors.pickupCity = language === 'en' ? 'Please enter City' : 'कृपया शहर का नाम भरें';
     }
 
-    // Require Pickup Date and Pickup Time across all 3 active tabs (One Way, Round Trip, Local Hourly)
-    if (tripType === 'oneway' || tripType === 'roundtrip' || tripType === 'local') {
-      if (!pickupDate || !pickupDate.trim()) {
-        errors.pickupDate = language === 'en'
-          ? 'Please select Pickup Date first'
-          : 'कृपया पहले पिकअप तारीख (Pickup Date) भरें';
-      }
-      if (!pickupTime || !pickupTime.trim()) {
-        errors.pickupTime = language === 'en'
-          ? 'Please select Pickup Time first'
-          : 'कृपया पहले पिकअप समय (Pickup Time) भरें';
-      }
+    // Auto-fill date/time defaults if cleared
+    if (!pickupDate || !pickupDate.trim()) {
+      setPickupDate(todayStr);
     }
-
-    // Require Return Date & Return Time for Round Trip
+    if (!pickupTime || !pickupTime.trim()) {
+      setPickupTime('09:00');
+    }
     if (tripType === 'roundtrip') {
       if (!returnDate || !returnDate.trim()) {
-        errors.returnDate = language === 'en'
-          ? 'Please select Return Date first'
-          : 'कृपया पहले वापसी तारीख (Return Date) भरें';
+        setReturnDate(tomorrowStr);
       }
       if (!returnTime || !returnTime.trim()) {
-        errors.returnTime = language === 'en'
-          ? 'Please select Return Time first'
-          : 'कृपया पहले वापसी समय (Return Time) भरें';
+        setReturnTime('18:00');
       }
     }
 
@@ -310,13 +313,13 @@ export const BookingForm: React.FC<BookingFormProps> = ({
       setIsMobilePopup(false);
       onSearchRoute({
         tripType,
-        pickupCity,
-        dropCity,
+        pickupCity: pickupCity || 'Varanasi',
+        dropCity: dropCity || 'Ayodhya',
         dropAddress,
-        pickupDate,
-        pickupTime,
-        returnDate,
-        returnTime,
+        pickupDate: pickupDate || todayStr,
+        pickupTime: pickupTime || '09:00',
+        returnDate: returnDate || tomorrowStr,
+        returnTime: returnTime || '18:00',
       });
       if (isModal && onCloseModal) {
         onCloseModal();
@@ -332,31 +335,21 @@ export const BookingForm: React.FC<BookingFormProps> = ({
     }, 150);
   };
 
-  // When user clicks "Book Cab" on a car card:
-  // If destination/date is not entered yet, open the One-Way Popup and auto-focus Destination!
+  // When user clicks "Book Cab" on any car card:
+  // If destination is not chosen yet, open the initial One-Way Route Popup so user picks destination at the start
   const handleOpenQuickModal = (vehicle: Vehicle) => {
     setSelectedVehicle(vehicle);
-    if (!dropCity.trim() || !pickupDate.trim() || !pickupTime.trim()) {
-      setTripType('oneway');
+    if (tripType !== 'local' && (!dropCity || !dropCity.trim())) {
       setFormErrors({});
       setIsMobilePopup(true);
       focusDestinationInput(true);
       return;
     }
-
-    if (!validateInputs()) {
-      setIsMobilePopup(true);
-      focusDestinationInput(true);
-      return;
-    }
-
-    setLoadingCarName(vehicle.name);
-    setIsCarLoading(true);
-
-    setTimeout(() => {
-      setIsCarLoading(false);
-      setShowQuickModal(true);
-    }, 400);
+    setFormErrors({});
+    setIsMobilePopup(false);
+    if (!pickupDate) setPickupDate(todayStr);
+    if (!pickupTime) setPickupTime('09:00');
+    setShowQuickModal(true);
   };
 
   // Active Fare Calculation for summary
@@ -404,12 +397,12 @@ export const BookingForm: React.FC<BookingFormProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
             <span className={`text-xs sm:text-sm font-extrabold truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
-              {language === 'en' ? 'Book Your One-Way & Outstation Cab' : 'वन-वे और आउटस्टेशन कैब बुक करें'}
+              {language === 'en' ? 'travelingcab · Book One-Way & Outstation Cab' : 'travelingcab · वन-वे और आउटस्टेशन कैब बुक करें'}
             </span>
           </div>
-          <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider shrink-0">
+          <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 text-[10px] font-black uppercase tracking-wider shrink-0">
             <Sparkles className="w-3 h-3" />
-            <span>₹200–₹300 Instant Discount</span>
+            <span>24/7 Chauffeur Dispatch</span>
           </span>
         </div>
       )}
@@ -1262,7 +1255,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                   <span className="text-amber-500 font-mono font-bold">(~{fareResult.estimatedDistanceKm} KM)</span>
                 </div>
                 <span className="text-emerald-600 dark:text-emerald-400 font-bold text-[10px] sm:text-xs">
-                  {tripType === 'roundtrip' ? 'Round Trip · Instant ₹200–₹300 OFF' : 'One-Way · Instant ₹200–₹300 OFF · ₹0 Advance'}
+                  {tripType === 'roundtrip' ? 'Round Trip · Instant ₹200–₹300 OFF' : 'One-Way · Instant ₹200–₹300 OFF'}
                 </span>
               </div>
             )}
@@ -1360,13 +1353,13 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               <span>
                 {hasSearched
                   ? `Available Cabs for ${pickupCity} → ${tripType === 'local' ? (dropAddress || 'Local City') : dropCity}`
-                  : (language === 'en' ? 'Our Cars (Instant ₹200–₹300 OFF)' : 'हमारी गाड़ियां (Our Cars)')}
+                  : (language === 'en' ? 'Our Cars' : 'हमारी गाड़ियां (Our Cars)')}
               </span>
             </h3>
             <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
               {language === 'en'
-                ? 'Click "Book Cab" on any car to enter your destination & get instant discount.'
-                : 'किसी भी गाड़ी पर "Book Cab" दबाएं और तुरंत डिस्काउंट पाएं।'}
+                ? 'Select any AC cab below to book your ride.'
+                : 'अपनी यात्रा के लिए नीचे किसी भी गाड़ी पर "Book Cab" दबाएं।'}
             </p>
           </div>
         </div>
@@ -1441,9 +1434,6 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                           {v.modelNames}
                         </p>
                       </div>
-                      <span className="text-[8px] sm:text-[9.5px] font-black px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 uppercase shrink-0">
-                        ₹{flatDiscount} OFF
-                      </span>
                     </div>
 
                     {/* Interactive 12 Seater / 26 Seater Selector on Force Tempo Traveller */}
@@ -1491,17 +1481,11 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                   </div>
 
                   {/* Bottom Action Bar: Opens One-Way Popup & Auto-Focuses Destination when Book Cab is clicked */}
-                  <div className="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3">
-                    <span className={`text-[10px] sm:text-xs font-bold flex items-center gap-1 truncate ${
-                      isLight ? 'text-blue-700' : 'text-blue-400'
-                    }`}>
-                      <Car className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span className="truncate">AC Cab · ₹0 Advance</span>
-                    </span>
+                  <div className="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-end gap-3">
                     <button
                       type="button"
                       onClick={() => handleOpenQuickModal(v)}
-                      className="btn-select-book text-[11px] sm:text-xs px-3.5 sm:px-4 py-1.5 rounded-lg sm:rounded-xl font-bold cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-sm"
+                      className="btn-select-book w-full sm:w-auto justify-center text-[11px] sm:text-xs px-4 py-1.5 rounded-lg sm:rounded-xl font-bold cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-sm"
                     >
                       <span>{language === 'en' ? 'Book Cab' : 'बुक करें'}</span>
                       <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.8]" />

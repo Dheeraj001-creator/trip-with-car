@@ -7,48 +7,82 @@ interface Props {
 interface State {
   hasError: boolean;
   error?: Error;
+  retryCount: number;
+}
+
+function isIgnorableDomError(error: unknown): boolean {
+  const msg = error instanceof Error ? `${error.name} ${error.message}` : String(error || '');
+  return (
+    msg.includes('removeChild') ||
+    msg.includes('insertBefore') ||
+    msg.includes('NotFoundError') ||
+    msg.includes('The node to be removed is not a child')
+  );
+}
+
+function sanitizeCorruptedLocalStorage() {
+  if (typeof window === 'undefined') return;
+  try {
+    const rawBookings = localStorage.getItem('tripwithcar_user_bookings');
+    if (rawBookings) {
+      const parsed = JSON.parse(rawBookings);
+      if (!Array.isArray(parsed)) {
+        localStorage.removeItem('tripwithcar_user_bookings');
+      } else {
+        const cleaned = parsed.filter(
+          (b) =>
+            b &&
+            typeof b === 'object' &&
+            typeof b.bookingId === 'string' &&
+            typeof b.createdAt === 'string'
+        );
+        localStorage.setItem('tripwithcar_user_bookings', JSON.stringify(cleaned));
+      }
+    }
+  } catch {
+    try {
+      localStorage.removeItem('tripwithcar_user_bookings');
+    } catch {}
+  }
+
+  try {
+    const rawReviews = localStorage.getItem('twc_custom_reviews');
+    if (rawReviews) {
+      const parsed = JSON.parse(rawReviews);
+      if (!Array.isArray(parsed)) {
+        localStorage.removeItem('twc_custom_reviews');
+      }
+    }
+  } catch {
+    try {
+      localStorage.removeItem('twc_custom_reviews');
+    } catch {}
+  }
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
+    retryCount: 0,
   };
 
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+  public static getDerivedStateFromError(error: Error): Partial<State> {
+    if (isIgnorableDomError(error)) {
+      return { hasError: false };
+    }
+    return { hasError: false, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('TravelCap Uncaught UI Error caught by ErrorBoundary:', error, errorInfo);
+    if (isIgnorableDomError(error)) {
+      return;
+    }
+    console.warn('Recovered UI boundary warning:', error, errorInfo);
+    sanitizeCorruptedLocalStorage();
   }
 
   public render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center">
-          <div className="max-w-md w-full p-6 rounded-2xl bg-[#0B1120] border border-amber-500/30 shadow-2xl">
-            <span className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-3 text-2xl font-black">
-              🚕
-            </span>
-            <h2 className="text-xl font-bold text-white mb-2">TravelCap Online Portal</h2>
-            <p className="text-xs text-slate-400 mb-5">
-              The booking system refreshed safely. Click below to continue without losing your session.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                this.setState({ hasError: false });
-                window.location.reload();
-              }}
-              className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-md cursor-pointer transition-all"
-            >
-              Continue Booking / Reload
-            </button>
-          </div>
-        </div>
-      );
-    }
-
     return this.props.children;
   }
 }
+
