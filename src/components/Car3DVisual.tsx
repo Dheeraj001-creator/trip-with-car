@@ -40,7 +40,7 @@ export const Car3DVisual: React.FC<Car3DVisualProps> = ({
           alt={vehicle.name}
           onError={() => setImgError(true)}
           referrerPolicy="no-referrer"
-          className="relative z-10 w-full h-full object-cover sm:object-contain p-1 filter drop-shadow-[0_12px_20px_rgba(0,0,0,0.85)] transition-all duration-500 group-hover:scale-108 group-hover:-translate-y-1"
+          className="relative z-10 w-full h-full object-contain p-2 filter drop-shadow-[0_12px_22px_rgba(0,0,0,0.9)] transition-all duration-500 group-hover:scale-108 group-hover:-translate-y-1"
         />
       ) : (
         /* Fallback 3D Geometric Automotive Card */

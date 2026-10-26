@@ -2,6 +2,15 @@ export type TripType = 'oneway' | 'roundtrip' | 'local' | 'airport';
 
 export type VehicleCategory = 'hatchback' | 'sedan' | 'suv' | 'crysta' | 'tempo' | 'luxury_suv' | 'force_tourist' | 'bolero' | 'bus' | 'honda';
 
+export interface VehicleSeatOption {
+  seats: number;
+  luggage: number;
+  oneWayRatePerKm: number;
+  roundTripRatePerKm: number;
+  ratePerKm: number;
+  label: string;
+}
+
 export interface Vehicle {
   id: string;
   name: string;
@@ -11,6 +20,9 @@ export interface Vehicle {
   luggage: number;
   ac: boolean;
   ratePerKm: number;
+  oneWayRatePerKm?: number;
+  roundTripRatePerKm?: number;
+  seatOptions?: VehicleSeatOption[];
   minKmPerDay: number;
   localRates: {
     '4h_40km': number;
@@ -61,6 +73,8 @@ export interface TourPackage {
   recommendedFor: string;
 }
 
+export type TripProgressStage = 'received' | 'assigned' | 'enroute' | 'arrived' | 'ongoing' | 'completed' | 'cancelled';
+
 export interface Booking {
   bookingId: string;
   tripType: TripType;
@@ -102,8 +116,12 @@ export interface Booking {
   specialInstructions?: string;
 
   // Payment & status
-  paymentPreference: 'cash_to_driver' | 'advance_20' | 'full_online';
+  paymentPreference: 'cash_to_driver' | 'online_pay' | 'advance_20' | 'full_online';
+  mobileVerified?: boolean;
   status: 'confirmed' | 'assigned' | 'completed' | 'cancelled';
+  tripStage?: TripProgressStage;
+  currentLocationNote?: string;
+  stageUpdatedAt?: string;
   createdAt: string;
 
   // Driver Dispatch assignment (Admin Portal)

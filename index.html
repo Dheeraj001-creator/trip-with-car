@@ -3,15 +3,78 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TripWithCar | Premium Outstation, Local & Airport Taxi Services</title>
-    <meta name="description" content="Book verified one-way, round-trip, local hourly rental and airport chauffeur cars across Varanasi, Ayodhya, Prayagraj, Lucknow and Pan India with TripWithCar." />
-    <meta property="og:title" content="TripWithCar | Premium Outstation, Local & Airport Taxi Services" />
-    <meta property="og:description" content="Book verified one-way, round-trip, local hourly rental and airport chauffeur cars across Varanasi, Ayodhya, Prayagraj, Lucknow and Pan India with TripWithCar." />
+    <title>TravelCap | Premium Outstation, Local & Airport Taxi Services</title>
+    <meta name="description" content="Book verified one-way, round-trip, local hourly rental and airport chauffeur cars across Varanasi, Ayodhya, Prayagraj, Lucknow and Pan India with TravelCap." />
+    <meta property="og:title" content="TravelCap | Premium Outstation, Local & Airport Taxi Services" />
+    <meta property="og:description" content="Book verified one-way, round-trip, local hourly rental and airport chauffeur cars across Varanasi, Ayodhya, Prayagraj, Lucknow and Pan India with TravelCap." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" media="print" onload="this.media='all'">
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap">
+    </noscript>
+    <script>
+      (function () {
+        var OrigWebSocket = window.WebSocket;
+        if (!OrigWebSocket) return;
+        function DummyWebSocket(url, protocols) {
+          this.url = String(url || '');
+          this.protocol = Array.isArray(protocols) ? (protocols[0] || '') : (protocols || '');
+          this.readyState = 1; // OPEN
+          this.bufferedAmount = 0;
+          this.extensions = '';
+          this.binaryType = 'blob';
+          this.onopen = null;
+          this.onerror = null;
+          this.onclose = null;
+          this.onmessage = null;
+          var self = this;
+          setTimeout(function () {
+            if (typeof self.onopen === 'function') {
+              try { self.onopen(new Event('open')); } catch (e) {}
+            }
+          }, 10);
+        }
+        DummyWebSocket.prototype.addEventListener = function (type, listener) {
+          if (type === 'open' && typeof listener === 'function') {
+            setTimeout(function () {
+              try { listener(new Event('open')); } catch (e) {}
+            }, 10);
+          }
+        };
+        DummyWebSocket.prototype.removeEventListener = function () {};
+        DummyWebSocket.prototype.send = function () {};
+        DummyWebSocket.prototype.close = function () { this.readyState = 3; };
+        DummyWebSocket.CONNECTING = 0;
+        DummyWebSocket.OPEN = 1;
+        DummyWebSocket.CLOSING = 2;
+        DummyWebSocket.CLOSED = 3;
+
+        var PatchedWebSocket = function (url, protocols) {
+          var urlStr = String(url || '');
+          var protoStr = Array.isArray(protocols) ? protocols.join(',') : String(protocols || '');
+          if (
+            protoStr.indexOf('vite') !== -1 ||
+            urlStr.indexOf('token=') !== -1 ||
+            urlStr.indexOf(window.location.host) !== -1 ||
+            urlStr.indexOf('localhost:') !== -1 ||
+            urlStr.indexOf('127.0.0.1:') !== -1
+          ) {
+            return new DummyWebSocket(urlStr, protocols);
+          }
+          return protocols !== undefined ? new OrigWebSocket(url, protocols) : new OrigWebSocket(url);
+        };
+        PatchedWebSocket.prototype = OrigWebSocket.prototype;
+        PatchedWebSocket.CONNECTING = OrigWebSocket.CONNECTING;
+        PatchedWebSocket.OPEN = OrigWebSocket.OPEN;
+        PatchedWebSocket.CLOSING = OrigWebSocket.CLOSING;
+        PatchedWebSocket.CLOSED = OrigWebSocket.CLOSED;
+        window.WebSocket = PatchedWebSocket;
+      })();
+    </script>
   </head>
   <body class="font-sans antialiased text-slate-100 selection:bg-amber-500 selection:text-slate-950">
     <div id="root"></div>

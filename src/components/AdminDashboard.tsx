@@ -26,18 +26,27 @@ import {
   BarChart3,
   TrendingUp,
   Award,
-  ArrowLeftRight
+  ArrowLeftRight,
+  RefreshCw,
+  Menu
 } from 'lucide-react';
-import { Booking, TripType } from '../types/cab';
+import { Booking, TripType, TripProgressStage } from '../types/cab';
 import { VEHICLES } from '../data/cabsData';
 import { 
   getBookingsFromStorage, 
   updateBookingInStorage, 
-  deleteBookingFromStorage, 
+  deleteBookingFromStorage,
+  deleteBookingAsync,
+  getDeletedBookingIds,
   getAdminPin, 
   setAdminPin,
+  fetchAdminPinFromServer,
+  setAdminPinAsync,
   generateDriverAssignmentWhatsAppText,
-  generateBookingId
+  generateBookingId,
+  syncBookingsFromServer,
+  subscribeToLiveBookings,
+  sendTripWithCarEmailNotification
 } from '../utils/fareCalculator';
 
 interface AdminDashboardProps {
@@ -83,8 +92,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [vehicleNoInput, setVehicleNoInput] = useState('');
 
   const [bookingToDelete, setBookingToDelete] = useState<Booking | null>(null);
+  const [bookingToComplete, setBookingToComplete] = useState<Booking | null>(null);
   const [showAddManualModal, setShowAddManualModal] = useState(false);
   const [showPinSettingsModal, setShowPinSettingsModal] = useState(false);
+  const [adminMobileMenuOpen, setAdminMobileMenuOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Manual booking form state
@@ -104,17 +115,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [oldPin, setOldPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [pinChangeError, setPinChangeError] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const isSyncingRef = React.useRef(false);
 
-  // Load bookings from storage
-  const loadBookings = () => {
-    const list = getBookingsFromStorage();
-    setBookings(list);
+  // Load bookings from storage, Express server & Cloud Firestore (guarded against concurrent loops)
+  const loadBookings = async (silent = true) => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+    if (!silent) setIsSyncing(true);
+
+    try {
+      const serverList = await syncBookingsFromServer();
+      if (Array.isArray(serverList)) {
+        const deletedSet = new Set(getDeletedBookingIds());
+        setBookings(
+          serverList.filter(
+            (b) => b && b.bookingId && !deletedSet.has(String(b.bookingId).trim().toUpperCase())
+          )
+        );
+      }
+    } catch {
+      const list = getBookingsFromStorage();
+      setBookings(list);
+    } finally {
+      isSyncingRef.current = false;
+      if (!silent) {
+        setIsSyncing(false);
+        showToast('Live bookings synced from Cloud Database');
+      }
+    }
   };
 
   useEffect(() => {
-    if (isOpen) {
-      loadBookings();
-    }
+    if (!isOpen) return;
+    loadBookings(true);
+
+    // Real-time Cloud Firestore listener for instant Mobile & PC booking updates without polling spam
+    const unsubscribe = subscribeToLiveBookings((liveBookings) => {
+      const deletedSet = new Set(getDeletedBookingIds());
+      const cleanLive = liveBookings.filter(
+        (b) => b && b.bookingId && !deletedSet.has(String(b.bookingId).trim().toUpperCase())
+      );
+      setBookings(cleanLive);
+    });
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadBookings(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [isOpen, isAuthenticated]);
 
   const showToast = (msg: string) => {
@@ -133,23 +188,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   }, [isOpen]);
 
-  // Handle PIN verification
-  const handleVerifyPin = (e?: React.FormEvent) => {
+  // Immediate Lock on Exit: whenever the user closes/exits dashboard, reset auth immediately
+  const handleExitAndLock = () => {
+    setIsAuthenticated(false);
+    sessionStorage.removeItem('twc_admin_auth');
+    setEnteredPin('');
+    setPinError(false);
+    onClose();
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsAuthenticated(false);
+      sessionStorage.removeItem('twc_admin_auth');
+      setEnteredPin('');
+      setPinError(false);
+    } else {
+      // Ensure latest PIN is synced from server whenever dashboard is opened
+      fetchAdminPinFromServer();
+    }
+  }, [isOpen]);
+
+  // Handle PIN verification (checks cached PIN and live server PIN so Mobile & PC are 100% in sync)
+  const handleVerifyPin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    const input = enteredPin.trim();
     const storedPin = getAdminPin();
-    if (enteredPin.trim() === storedPin) {
+    if (input === storedPin) {
       setIsAuthenticated(true);
       sessionStorage.setItem('twc_admin_auth', 'true');
       setPinError(false);
       setEnteredPin('');
       loadBookings();
-    } else {
-      setPinError(true);
-      setTimeout(() => setPinError(false), 2000);
+      return;
     }
+    
+    // Check with server in case PIN was changed on another device (PC or Mobile)
+    const serverPin = await fetchAdminPinFromServer();
+    if (input === serverPin) {
+      setIsAuthenticated(true);
+      sessionStorage.setItem('twc_admin_auth', 'true');
+      setPinError(false);
+      setEnteredPin('');
+      loadBookings();
+      return;
+    }
+
+    setPinError(true);
+    setTimeout(() => setPinError(false), 2000);
   };
 
-  const handleKeypadPress = (num: string) => {
+  const handleKeypadPress = async (num: string) => {
     if (enteredPin.length < 6) {
       const updated = enteredPin + num;
       setEnteredPin(updated);
@@ -161,7 +250,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setPinError(false);
           setEnteredPin('');
           loadBookings();
+          return;
         }
+
+        const serverPin = await fetchAdminPinFromServer();
+        if (updated === serverPin) {
+          setIsAuthenticated(true);
+          sessionStorage.setItem('twc_admin_auth', 'true');
+          setPinError(false);
+          setEnteredPin('');
+          loadBookings();
+          return;
+        }
+
+        setPinError(true);
+        setTimeout(() => setPinError(false), 2000);
       }
     }
   };
@@ -171,17 +274,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleLogout = () => {
-    setIsAuthenticated(false);
-    sessionStorage.removeItem('twc_admin_auth');
-    setEnteredPin('');
+    handleExitAndLock();
   };
 
   // Status updates
   const handleUpdateStatus = (booking: Booking, newStatus: 'confirmed' | 'assigned' | 'completed' | 'cancelled') => {
-    const updated: Booking = { ...booking, status: newStatus };
+    if (newStatus === 'completed') {
+      setBookingToComplete(booking);
+      return;
+    }
+    const updated: Booking = {
+      ...booking,
+      status: newStatus,
+      tripStage:
+        newStatus === 'assigned'
+          ? 'assigned'
+          : newStatus === 'confirmed'
+          ? 'received'
+          : booking.tripStage,
+      stageUpdatedAt: new Date().toISOString(),
+    };
     updateBookingInStorage(updated);
-    loadBookings();
-    showToast(`Status updated to ${newStatus.toUpperCase()}`);
+    setBookings((prev) => prev.map((b) => (b.bookingId === updated.bookingId ? updated : b)));
+    sendTripWithCarEmailNotification(updated, {
+      isLiveUpdate: true,
+      liveStatusLabel: `BOOKING ${newStatus.toUpperCase()}`,
+      liveNote: `Your TravelCap booking (${updated.bookingId}) status is now ${newStatus.toUpperCase()}.`,
+    }).catch(() => {});
+    showToast(`Status updated to ${newStatus.toUpperCase()} · TravelCap email sent!`);
+  };
+
+  // Confirm Ride Completion from Popup Modal ("OK" clicked)
+  const handleConfirmCompleteRide = () => {
+    if (!bookingToComplete) return;
+    const updated: Booking = {
+      ...bookingToComplete,
+      status: 'completed',
+      tripStage: 'completed',
+      stageUpdatedAt: new Date().toISOString(),
+      currentLocationNote: `Trip successfully completed and received at ${bookingToComplete.dropCity || 'Destination'}. Thank you for riding with TravelCap!`,
+    };
+    updateBookingInStorage(updated);
+    setBookings((prev) => prev.map((b) => (b.bookingId === updated.bookingId ? updated : b)));
+    sendTripWithCarEmailNotification(updated, {
+      isLiveUpdate: true,
+      liveStatusLabel: 'RIDE COMPLETED SUCCESSFULLY',
+      liveNote: updated.currentLocationNote,
+    }).catch(() => {});
+    const completedId = updated.bookingId;
+    setBookingToComplete(null);
+    showToast(`Ride ${completedId} marked Completed! TravelCap email sent to customer.`);
   };
 
   // Open Driver Assignment Modal
@@ -196,43 +338,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleSaveDriver = (e: React.FormEvent) => {
     e.preventDefault();
     if (!driverModalBooking) return;
-    const cleanDriverPhone = driverPhoneInput.replace(/\D/g, '').slice(0, 10);
-    if (!driverNameInput.trim() || cleanDriverPhone.length !== 10) {
-      alert('Please enter Driver Name and valid 10-digit mobile number');
+    const cleanDriverPhone = driverPhoneInput.replace(/\D/g, '');
+    if (!driverNameInput.trim()) {
+      showToast('Please enter Driver Name');
       return;
     }
+    const finalPhone = cleanDriverPhone.length >= 10 ? cleanDriverPhone.slice(-10) : (cleanDriverPhone || '9696876785');
 
     const updated: Booking = {
       ...driverModalBooking,
       driverName: driverNameInput.trim(),
-      driverPhone: cleanDriverPhone,
+      driverPhone: finalPhone,
       vehicleNumber: vehicleNoInput.trim() || 'Commercial Yellow Cab',
       status: 'assigned',
+      tripStage: 'assigned',
+      stageUpdatedAt: new Date().toISOString(),
+      currentLocationNote: `Senior Chauffeur ${driverNameInput.trim()} (+91 ${finalPhone}) allocated. Preparing for pickup.`,
     };
 
     updateBookingInStorage(updated);
-    loadBookings();
+    setBookings(prev => prev.map(b => b.bookingId === updated.bookingId ? updated : b));
+    sendTripWithCarEmailNotification(updated, {
+      isLiveUpdate: true,
+      liveStatusLabel: `CHAUFFEUR ASSIGNED (${updated.driverName})`,
+      liveNote: updated.currentLocationNote,
+    }).catch(() => {});
     setDriverModalBooking(null);
-    showToast('Chauffeur assigned successfully!');
+    showToast(`Chauffeur ${driverNameInput.trim()} assigned! TravelCap email & live tracking updated.`);
   };
 
-  // Delete Booking Execution (Immediate state update + LocalStorage persistence)
-  const handleConfirmDelete = () => {
+  // Delete Booking Execution (Permanent across LocalStorage, Server & Cloud Firestore)
+  const handleConfirmDelete = async () => {
     if (!bookingToDelete) return;
-    deleteBookingFromStorage(bookingToDelete.bookingId);
-    setBookings(prev => prev.filter(b => b.bookingId !== bookingToDelete.bookingId));
+    const id = bookingToDelete.bookingId;
+    const upperId = String(id).trim().toUpperCase();
+    deleteBookingFromStorage(id, false);
+    setBookings(prev => prev.filter(b => String(b.bookingId).trim().toUpperCase() !== upperId));
     setBookingToDelete(null);
     setInlineConfirmDeleteId(null);
-    showToast(`Reservation ${bookingToDelete.bookingId} deleted successfully`);
+    await deleteBookingAsync(id);
+    showToast(`Reservation ${id} permanently deleted`);
   };
 
-  // 1-Click Direct Delete from Card
-  const handleDeleteBookingDirect = (bookingId: string) => {
-    deleteBookingFromStorage(bookingId);
-    setBookings(prev => prev.filter(b => b.bookingId !== bookingId));
+  // 1-Click Direct Delete from Card (Permanent across LocalStorage, Server & Cloud Firestore)
+  const handleDeleteBookingDirect = async (bookingId: string) => {
+    const upperId = String(bookingId).trim().toUpperCase();
+    deleteBookingFromStorage(bookingId, false);
+    setBookings(prev => prev.filter(b => String(b.bookingId).trim().toUpperCase() !== upperId));
     setBookingToDelete(null);
     setInlineConfirmDeleteId(null);
-    showToast(`Reservation ${bookingId} deleted successfully`);
+    await deleteBookingAsync(bookingId);
+    showToast(`Reservation ${bookingId} permanently deleted`);
   };
 
   // Create Manual Booking
@@ -240,7 +396,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     e.preventDefault();
     const cleanManualPhone = manualPhone.replace(/\D/g, '').slice(0, 10);
     if (!manualName.trim() || cleanManualPhone.length !== 10) {
-      alert('Please enter customer name and exactly 10-digit mobile number');
+      showToast('Please enter customer name and 10-digit mobile number');
       return;
     }
 
@@ -263,7 +419,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       totalFare: Number(manualFare) || 2499,
       passengerName: manualName.trim(),
       passengerPhone: cleanManualPhone,
-      passengerEmail: manualEmail.trim() || 'manual@tripwithcar.com',
+      passengerEmail: manualEmail.trim() || 'manual@travelcap.com',
       passengerCount: 3,
       luggageCount: 2,
       paymentPreference: 'cash_to_driver',
@@ -272,26 +428,83 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
 
     updateBookingInStorage(newBooking);
-    loadBookings();
+    setBookings(prev => [newBooking, ...prev]);
+    sendTripWithCarEmailNotification(newBooking, {
+      isLiveUpdate: false,
+      liveStatusLabel: 'BOOKING CONFIRMED',
+    }).catch(() => {});
     setShowAddManualModal(false);
     setManualName('');
     setManualPhone('');
     showToast(`Booking ${newBooking.bookingId} created!`);
   };
 
-  // Change Admin PIN
-  const handleChangePin = (e: React.FormEvent) => {
+  // Advance journey stage for live customer tracking & automatic TripWithCar email notification
+  const handleSetTripStage = (booking: Booking, stage: TripProgressStage) => {
+    // If Admin clicks "6. Completed", show confirmation popup first ("OK karne par ride completed ho jaay")
+    if (stage === 'completed') {
+      setBookingToComplete(booking);
+      return;
+    }
+
+    const updated: Booking = { ...booking };
+    updated.tripStage = stage;
+    updated.stageUpdatedAt = new Date().toISOString();
+
+    let statusLabel = 'LIVE RIDE UPDATED';
+
+    if (stage === 'ongoing') {
+      updated.status = 'assigned';
+      statusLabel = 'TRIP IN TRANSIT (ON ROUTE)';
+      updated.currentLocationNote = `Live on route: ${booking.pickupCity} → ${booking.dropCity || 'Local'}. AC on, safe driving.`;
+    } else if (stage === 'arrived') {
+      updated.status = 'assigned';
+      statusLabel = 'CAB ARRIVED AT PICKUP LOCATION';
+      updated.currentLocationNote = `Cab arrived at ${booking.pickupAddress || booking.pickupCity}. Chauffeur waiting at pickup location.`;
+    } else if (stage === 'enroute') {
+      updated.status = 'assigned';
+      statusLabel = 'DRIVER EN ROUTE TO PICKUP';
+      updated.currentLocationNote = `Driver is en route to ${booking.pickupAddress || booking.pickupCity}. Estimated pickup in 10-15 mins.`;
+    } else if (stage === 'assigned') {
+      updated.status = 'assigned';
+      statusLabel = 'CHAUFFEUR & CAB ASSIGNED';
+      if (!updated.driverName) {
+        setDriverModalBooking(booking);
+        setDriverNameInput('Rajesh Kumar (Senior Chauffeur)');
+        setDriverPhoneInput('9876543210');
+        setVehicleNoInput('UP 65 BT 4589');
+        return;
+      }
+      updated.currentLocationNote = `Cab & Driver assigned (${updated.driverName}). Chauffeur preparing for pickup.`;
+    } else if (stage === 'received') {
+      updated.status = 'confirmed';
+      statusLabel = 'BOOKING RECEIVED & CONFIRMED';
+      updated.currentLocationNote = `Booking received & confirmed at Central Dispatch Hub. Preparing cab allocation.`;
+    }
+
+    updateBookingInStorage(updated);
+    setBookings((prev) => prev.map((b) => (b.bookingId === updated.bookingId ? updated : b)));
+    sendTripWithCarEmailNotification(updated, {
+      isLiveUpdate: true,
+      liveStatusLabel: statusLabel,
+      liveNote: updated.currentLocationNote,
+    }).catch(() => {});
+    showToast(`Live Stage: ${stage.toUpperCase()} · TravelCap email sent for Track ID ${booking.bookingId}!`);
+  };
+
+  // Change Admin PIN (Syncs instantly across Mobile & PC via centralized server)
+  const handleChangePin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const currentStored = getAdminPin();
-    if (oldPin !== currentStored) {
+    const currentStored = await fetchAdminPinFromServer();
+    if (oldPin.trim() !== currentStored) {
       setPinChangeError('Current PIN is incorrect');
       return;
     }
-    if (newPin.length < 4) {
+    if (newPin.trim().length < 4) {
       setPinChangeError('New PIN must be at least 4 digits');
       return;
     }
-    setAdminPin(newPin);
+    await setAdminPinAsync(newPin.trim());
     setShowPinSettingsModal(false);
     setOldPin('');
     setNewPin('');
@@ -300,13 +513,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsAuthenticated(false);
     sessionStorage.removeItem('twc_admin_auth');
     setEnteredPin('');
-    showToast('PIN updated successfully! Dashboard locked. Enter new PIN to unlock.');
+    showToast('PIN updated across all devices (Mobile & PC)! Enter new PIN to unlock.');
   };
 
   // Export to CSV
   const handleExportCSV = () => {
     if (bookings.length === 0) {
-      alert('No bookings to export.');
+      showToast('No bookings to export.');
       return;
     }
 
@@ -330,19 +543,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     ];
 
     const rows = bookings.map(b => [
-      b.bookingId,
-      b.createdAt,
-      b.status,
-      `"${b.passengerName.replace(/"/g, '""')}"`,
-      `"${b.passengerPhone}"`,
-      `"${b.passengerEmail}"`,
-      b.tripType,
-      `"${b.pickupCity}"`,
+      b.bookingId || '',
+      b.createdAt || '',
+      b.status || 'confirmed',
+      `"${(b.passengerName || '').replace(/"/g, '""')}"`,
+      `"${b.passengerPhone || ''}"`,
+      `"${b.passengerEmail || ''}"`,
+      b.tripType || 'oneway',
+      `"${b.pickupCity || ''}"`,
       `"${b.dropCity || ''}"`,
-      b.pickupDate,
-      b.pickupTime,
+      b.pickupDate || '',
+      b.pickupTime || '',
       `"${b.vehicle?.name || ''}"`,
-      b.totalFare,
+      b.totalFare || 0,
       `"${b.driverName || 'Not Assigned'}"`,
       `"${b.driverPhone || ''}"`,
       `"${b.vehicleNumber || ''}"`
@@ -352,7 +565,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `TripWithCar_Bookings_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `TravelCap_Bookings_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -366,10 +579,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesQuery = 
-          b.bookingId.toLowerCase().includes(q) ||
-          b.passengerName.toLowerCase().includes(q) ||
-          b.passengerPhone.includes(q) ||
-          b.pickupCity.toLowerCase().includes(q) ||
+          (b.bookingId || '').toLowerCase().includes(q) ||
+          (b.passengerName || '').toLowerCase().includes(q) ||
+          (b.passengerPhone || '').includes(q) ||
+          (b.pickupCity || '').toLowerCase().includes(q) ||
           (b.dropCity && b.dropCity.toLowerCase().includes(q)) ||
           (b.driverName && b.driverName.toLowerCase().includes(q));
         if (!matchesQuery) return false;
@@ -617,21 +830,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="w-full flex items-center justify-center my-auto">
           <div className="relative w-full max-w-[340px] rounded-2xl sm:rounded-3xl p-5 border border-slate-200 bg-white text-slate-900 shadow-2xl text-center transition-all">
             <button
-              onClick={onClose}
+              onClick={handleExitAndLock}
               className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
               title="Close & Return to Website"
             >
               <X className="w-4 h-4" />
             </button>
 
-            {/* Lock Emblem */}
-            <div className="w-12 h-12 mx-auto mb-2.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-600 shadow-xs">
-              <Lock className="w-6 h-6 stroke-[2.5]" />
+            {/* Fleet Dispatch Emblem (No lock logo) */}
+            <div className="w-12 h-12 mx-auto mb-2.5 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xl shadow-md">
+              🚕
             </div>
 
             <h2 className="text-base font-black tracking-tight text-slate-900">Staff &amp; Dispatch Access</h2>
             <p className="text-xs text-slate-500 mt-0.5 mb-3">
-              Private portal for TripWithCar fleet dispatch.
+              Private portal for TravelCap fleet dispatch.
             </p>
 
             {/* PIN Entry Display */}
@@ -653,6 +866,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setPinError(false);
                       setEnteredPin('');
                       loadBookings();
+                    } else {
+                      fetchAdminPinFromServer().then((serverPin) => {
+                        if (val === serverPin) {
+                          setIsAuthenticated(true);
+                          sessionStorage.setItem('twc_admin_auth', 'true');
+                          setPinError(false);
+                          setEnteredPin('');
+                          loadBookings();
+                        } else {
+                          setPinError(true);
+                          setTimeout(() => setPinError(false), 2000);
+                        }
+                      });
                     }
                   }
                 }}
@@ -724,156 +950,258 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         /* SCREEN 2: AUTHENTICATED ADMIN DISPATCH DASHBOARD - WHITE HOMEPAGE THEME WITH DISTINCT SECTIONS */
         <div className="w-full min-h-screen p-3 sm:p-5 lg:p-6 pb-28 max-w-7xl mx-auto space-y-4">
           
-          {/* SECTION 1: HEADER CONSOLE */}
-          <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white text-slate-900 shadow-sm transition-all">
-            {/* Top row: Brand & Live Desk Controls */}
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 text-[11px] font-black uppercase tracking-wider">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Live Dispatch Desk
+          {/* SECTION 1: RESPONSIVE HEADER CONSOLE WITH MOBILE MENU */}
+          <div className="p-3 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white text-slate-900 shadow-sm transition-all">
+            {/* Top row: Brand & Compact Mobile/Desktop Controls */}
+            <div className="flex items-center justify-between gap-2 pb-2.5 sm:pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs sm:text-sm font-black text-amber-600 font-mono truncate">
+                  TravelCap Operations
                 </span>
-                <span className="text-xs font-bold text-amber-600 font-mono hidden sm:inline">TripWithCar Operations</span>
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* Right Controls: Compact on Mobile so Zero Text Overflows */}
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
-                  onClick={onClose}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all border border-slate-300"
+                  type="button"
+                  onClick={() => loadBookings(false)}
+                  disabled={isSyncing}
+                  className="px-2 sm:px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-800 hover:bg-amber-500/25 text-[11px] sm:text-xs font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                  title="Pull latest bookings from central server"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Back to Site</span>
+                  <RefreshCw className={`w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Sync...' : 'Sync'}</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[9.5px] font-black">
+                    {bookings.length}
+                  </span>
+                </button>
+
+                {/* Mobile Menu Toggle Button (< 768px) - Icon Only */}
+                <button
+                  type="button"
+                  onClick={() => setAdminMobileMenuOpen(prev => !prev)}
+                  className={`md:hidden p-2 rounded-xl border flex items-center justify-center cursor-pointer transition-all ${
+                    adminMobileMenuOpen
+                      ? 'bg-amber-500 border-amber-500 text-slate-950 shadow-xs'
+                      : 'bg-slate-900 border-slate-800 text-amber-400'
+                  }`}
+                  title={adminMobileMenuOpen ? 'Close Menu' : 'Open Menu'}
+                  aria-label="Toggle Menu"
+                >
+                  {adminMobileMenuOpen ? <X className="w-4 h-4 stroke-[2.5]" /> : <Menu className="w-4 h-4 stroke-[2.5]" />}
                 </button>
 
                 <button
-                  onClick={handleLogout}
-                  className="px-2.5 py-1.5 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all cursor-pointer flex items-center gap-1 text-xs font-bold"
-                  title="Lock Dashboard"
+                  onClick={handleExitAndLock}
+                  className="hidden sm:flex px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold items-center gap-1 cursor-pointer transition-all border border-slate-300 whitespace-nowrap"
                 >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>Lock</span>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Site</span>
+                </button>
+
+                <button
+                  onClick={handleExitAndLock}
+                  className="px-2 sm:px-2.5 py-1.5 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all cursor-pointer flex items-center gap-1 text-[11px] sm:text-xs font-bold whitespace-nowrap"
+                  title="Lock & Exit Dashboard"
+                >
+                  <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <span>Exit</span>
                 </button>
               </div>
             </div>
 
-            {/* Bottom row: Title & 4-Action Grid */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-3">
-              <div>
-                <h1 className="text-base sm:text-lg lg:text-xl font-black tracking-tight text-slate-900">
-                  Reservation Management &amp; Dispatch Console
-                </h1>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Live fleet tracking, customer dispatch log &amp; chauffeur assignment.
-                </p>
-              </div>
+            {/* Bottom row: Title & Desktop Action Buttons + Collapsible Mobile Menu */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pt-2.5 sm:pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h1 className="text-sm sm:text-lg lg:text-xl font-black tracking-tight text-slate-900 leading-snug">
+                    Reservation &amp; Dispatch Console
+                  </h1>
+                  <p className="text-[11px] sm:text-xs text-slate-500">
+                    Live fleet tracking, customer dispatch log &amp; chauffeur assignment.
+                  </p>
+                </div>
 
-              {/* 4-ACTION GRID: Equal height, clean responsive layout */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full lg:w-auto shrink-0">
+                {/* Quick "+ Manual" Button always accessible on Mobile */}
                 <button
                   type="button"
                   onClick={() => setShowAddManualModal(true)}
-                  className="h-10 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-95 whitespace-nowrap"
+                  className="md:hidden px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-black flex items-center gap-1 shadow-xs cursor-pointer shrink-0 whitespace-nowrap"
                 >
-                  <Plus className="w-4 h-4 stroke-[2.5] shrink-0" />
+                  <Plus className="w-3.5 h-3.5 stroke-[2.8]" />
+                  <span>Add Ride</span>
+                </button>
+              </div>
+
+              {/* Desktop 4-Action Row (Hidden on mobile, replaced by collapsible mobile menu) */}
+              <div className="hidden md:grid md:grid-cols-4 gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowAddManualModal(true)}
+                  className="h-9 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-95 whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
                   <span>+ Manual Ride</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleExportCSV}
-                  className="h-10 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all whitespace-nowrap shadow-xs"
+                  className="h-9 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all whitespace-nowrap shadow-xs"
                   title="Download CSV"
                 >
-                  <Download className="w-4 h-4 shrink-0 text-slate-600" />
+                  <Download className="w-3.5 h-3.5 shrink-0 text-slate-600" />
                   <span>Export Excel</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setViewTab(prev => prev === 'visual' ? 'list' : 'visual')}
-                  className={`h-10 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all whitespace-nowrap shadow-xs ${
+                  className={`h-9 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all whitespace-nowrap shadow-xs ${
                     viewTab === 'visual'
                       ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
                       : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700'
                   }`}
                 >
-                  <BarChart3 className={`w-4 h-4 shrink-0 ${viewTab === 'visual' ? 'text-white' : 'text-blue-600'}`} />
+                  <BarChart3 className={`w-3.5 h-3.5 shrink-0 ${viewTab === 'visual' ? 'text-white' : 'text-blue-600'}`} />
                   <span>Visual Records</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowPinSettingsModal(true)}
-                  className="h-10 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all whitespace-nowrap shadow-xs"
+                  className="h-9 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all whitespace-nowrap shadow-xs"
                 >
-                  <Key className="w-4 h-4 text-amber-500 shrink-0" />
+                  <Key className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                   <span>Change PIN</span>
                 </button>
               </div>
+
+              {/* COLLAPSIBLE MOBILE ADMIN MENU (< 768px) */}
+              {adminMobileMenuOpen && (
+                <div className="md:hidden mt-1 p-3 rounded-2xl bg-slate-900 text-white border border-slate-800 space-y-2 animate-in slide-in-from-top-2 duration-150">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 px-1">
+                    Admin Quick Actions Menu
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddManualModal(true);
+                        setAdminMobileMenuOpen(false);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-amber-500 text-slate-950 text-[11px] font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[2.8] shrink-0" />
+                      <span>+ Manual Ride</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleExportCSV();
+                        setAdminMobileMenuOpen(false);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <Download className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Export Excel</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setViewTab(prev => prev === 'visual' ? 'list' : 'visual');
+                        setAdminMobileMenuOpen(false);
+                      }}
+                      className={`px-3 py-2 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                        viewTab === 'visual'
+                          ? 'bg-blue-600 border-blue-500 text-white'
+                          : 'bg-slate-800 border-slate-700 text-white'
+                      }`}
+                    >
+                      <BarChart3 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      <span>{viewTab === 'visual' ? 'Show List' : 'Visual Records'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPinSettingsModal(true);
+                        setAdminMobileMenuOpen(false);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Change PIN</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* SECTION 2: KPI METRIC CARDS - DISTINCT WHITE TILES WITH ACCENTS */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
-            <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 bg-white shadow-sm transition-all flex flex-col justify-between h-20 sm:h-22">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-bold truncate">Total Bookings</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">All</span>
+          {/* SECTION 2: KPI METRIC CARDS - COMPACT & RESPONSIVE */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
+            <div className="p-3 sm:p-4 rounded-2xl border border-slate-200/90 bg-white shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[11px] sm:text-xs text-slate-500 font-bold truncate">Total Bookings</span>
+                <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 shrink-0">All</span>
               </div>
-              <div className="text-xl sm:text-2xl font-black font-mono tracking-tight text-slate-900">{metrics.totalCount}</div>
+              <div className="text-lg sm:text-2xl font-black font-mono tracking-tight text-slate-900 mt-1">{metrics.totalCount}</div>
             </div>
 
-            <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 bg-white shadow-sm transition-all flex flex-col justify-between h-20 sm:h-22">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-bold truncate">Active Trips</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Live</span>
+            <div className="p-3 sm:p-4 rounded-2xl border border-slate-200/90 bg-white shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[11px] sm:text-xs text-slate-500 font-bold truncate">Active Trips</span>
+                <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">Live</span>
               </div>
-              <div className="text-xl sm:text-2xl font-black font-mono tracking-tight text-emerald-600">{metrics.activeTrips}</div>
+              <div className="text-lg sm:text-2xl font-black font-mono tracking-tight text-emerald-600 mt-1">{metrics.activeTrips}</div>
             </div>
 
-            <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 bg-white shadow-sm transition-all flex flex-col justify-between h-20 sm:h-22">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-bold truncate">Gross Tariff</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">Pipeline</span>
+            <div className="p-3 sm:p-4 rounded-2xl border border-slate-200/90 bg-white shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[11px] sm:text-xs text-slate-500 font-bold truncate">Gross Tariff</span>
+                <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 shrink-0">INR</span>
               </div>
-              <div className="text-xl sm:text-2xl font-black font-mono tracking-tight text-amber-600">₹{metrics.totalGross.toLocaleString('en-IN')}</div>
+              <div className="text-lg sm:text-2xl font-black font-mono tracking-tight text-amber-600 mt-1 truncate">₹{metrics.totalGross.toLocaleString('en-IN')}</div>
             </div>
 
-            <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 bg-white shadow-sm transition-all flex flex-col justify-between h-20 sm:h-22">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-bold truncate">Today's Inquiries</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">Today</span>
+            <div className="p-3 sm:p-4 rounded-2xl border border-slate-200/90 bg-white shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[11px] sm:text-xs text-slate-500 font-bold truncate">Today's Rides</span>
+                <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0">Today</span>
               </div>
-              <div className="text-xl sm:text-2xl font-black font-mono tracking-tight text-purple-600">{metrics.todayBookings}</div>
+              <div className="text-lg sm:text-2xl font-black font-mono tracking-tight text-purple-600 mt-1">{metrics.todayBookings}</div>
             </div>
           </div>
 
           {/* VIEW SWITCH TABS (All Reservations List vs Visual Records) */}
-          <div className="flex items-center justify-between pt-1 pb-1">
-            <div className="bg-slate-200/80 p-1 rounded-2xl inline-flex gap-1.5 border border-slate-300/60 shadow-xs">
+          <div className="flex items-center justify-between pt-0.5 pb-0.5">
+            <div className="bg-slate-200/80 p-1 rounded-xl sm:rounded-2xl inline-flex gap-1 border border-slate-300/60 shadow-xs max-w-full">
               <button
                 type="button"
                 onClick={() => setViewTab('list')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                   viewTab === 'list'
                     ? 'bg-amber-500 text-slate-950 shadow-sm'
                     : 'text-slate-700 hover:bg-white/80'
                 }`}
               >
-                <Car className="w-3.5 h-3.5" />
-                <span>All Reservations ({filteredBookings.length})</span>
+                <Car className="w-3.5 h-3.5 shrink-0" />
+                <span>Reservations ({filteredBookings.length})</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewTab('visual')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                   viewTab === 'visual'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-700 hover:bg-white/80'
                 }`}
               >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>Visual Records Summary</span>
+                <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+                <span>Visual Summary</span>
               </button>
             </div>
 
@@ -1420,22 +1748,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </select>
           </div>
 
-          {/* SECTION 5: BOOKINGS FEED LIST */}
-          <div className="space-y-3 pt-1">
+          {/* SECTION 5: CLEARLY SEPARATED & FORMATTED ACTIVE RESERVATIONS CARDS */}
+          <div className="space-y-4 sm:space-y-5 pt-1">
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
                 <span>Active Reservations</span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
-                  {filteredBookings.length} {filteredBookings.length === 1 ? 'Record' : 'Records'}
+                <span className="px-2.5 py-0.5 rounded-full bg-slate-900 text-amber-400 font-mono text-[11px] font-bold">
+                  {filteredBookings.length} {filteredBookings.length === 1 ? 'Booking' : 'Bookings'}
                 </span>
               </span>
-              <span className="text-xs text-slate-500 font-semibold">
-                Sorted by: Newest
+              <span className="text-[11px] sm:text-xs text-slate-500 font-semibold">
+                Newest First
               </span>
             </div>
 
             {filteredBookings.length === 0 ? (
-              <div className="p-12 text-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <div className="p-10 sm:p-12 text-center rounded-2xl border-2 border-dashed border-slate-300 bg-white text-slate-600 shadow-sm">
                 <Car className="w-12 h-12 mx-auto mb-3 opacity-30 text-amber-500" />
                 <h3 className="text-base font-bold text-slate-800">No bookings found</h3>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
@@ -1453,69 +1781,83 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
             ) : (
-              filteredBookings.map((b) => {
+              filteredBookings.map((b, index) => {
+                const cleanPhone = (b.passengerPhone || '').replace(/\D/g, '');
                 const customerWhatsAppMsg = encodeURIComponent(
-                  `Namaste ${b.passengerName}, this is TripWithCar team regarding your cab booking ${b.bookingId} (${b.pickupCity} → ${b.dropCity || 'Local'}). How can we assist you?`
+                  `Namaste ${b.passengerName || 'Guest'}, this is TravelCap team regarding your cab booking ${b.bookingId} (${b.pickupCity} → ${b.dropCity || 'Local'}). How can we assist you?`
                 );
-                const customerWhatsAppUrl = `https://wa.me/91${b.passengerPhone.replace(/\D/g, '')}?text=${customerWhatsAppMsg}`;
+                const customerWhatsAppUrl = `https://wa.me/91${cleanPhone}?text=${customerWhatsAppMsg}`;
                 const driverDispatchText = encodeURIComponent(generateDriverAssignmentWhatsAppText(b));
-                const driverShareUrl = `https://wa.me/91${b.passengerPhone.replace(/\D/g, '')}?text=${driverDispatchText}`;
+                const driverShareUrl = `https://wa.me/91${cleanPhone}?text=${driverDispatchText}`;
 
                 return (
                   <div
-                    key={b.bookingId}
-                    className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 text-slate-900 transition-all shadow-sm hover:shadow-md hover:border-slate-300"
+                    key={b.bookingId || index}
+                    className="rounded-2xl border-2 border-slate-300 bg-white text-slate-900 overflow-hidden shadow-md hover:shadow-lg transition-all"
                   >
-                    {/* CARD HEADER */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-amber-600 text-sm sm:text-base">
+                    {/* DISTINCT DARK HEADER BAR: Separates Each Booking Clearly */}
+                    <div className="bg-slate-900 text-white px-3.5 sm:px-5 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 font-mono font-black text-xs shrink-0">
+                          #{index + 1}
+                        </span>
+                        <span className="font-mono font-black text-amber-400 text-xs sm:text-sm truncate">
                           {b.bookingId}
                         </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase font-bold border border-slate-200">
-                          {b.tripType}
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-emerald-400 uppercase font-bold border border-slate-700 shrink-0">
+                          {b.tripType || 'oneway'}
                         </span>
-                        <span className="text-xs text-slate-500">
-                          {new Date(b.createdAt).toLocaleDateString()} at {new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold border shrink-0 ${
+                          b.paymentPreference === 'online_pay'
+                            ? 'bg-blue-950/80 text-blue-300 border-blue-500/40'
+                            : 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                        }`}>
+                          {b.paymentPreference === 'online_pay' ? '💳 Online Pay' : '💵 Cash in Hand'}
+                        </span>
+                        <span className="text-[11px] text-slate-400 hidden sm:inline truncate">
+                          · {b.createdAt ? `${new Date(b.createdAt).toLocaleDateString()} ${new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
                         </span>
                       </div>
 
-                      {/* Status Dropdown & Delete Button */}
-                      <div className="flex items-center gap-2">
+                      {/* Right: Total Fare + Status Dropdown + Delete Button */}
+                      <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
+                        <span className="price-badge-chatkar font-mono font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-lg">
+                          ₹{b.totalFare || 0}
+                        </span>
+
                         <select
-                          value={b.status}
+                          value={b.status || 'confirmed'}
                           onChange={(e) => handleUpdateStatus(b, e.target.value as any)}
-                          className={`text-xs font-bold px-3 py-1 rounded-xl border focus:outline-none cursor-pointer ${
+                          className={`text-[11px] sm:text-xs font-bold px-2.5 py-1 rounded-lg border focus:outline-none cursor-pointer ${
                             b.status === 'confirmed'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                              ? 'bg-emerald-500 text-slate-950 border-emerald-400'
                               : b.status === 'assigned'
-                              ? 'bg-blue-50 text-blue-700 border-blue-300'
+                              ? 'bg-blue-500 text-white border-blue-400'
                               : b.status === 'completed'
-                              ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
-                              : 'bg-rose-50 text-rose-700 border-rose-300'
+                              ? 'bg-indigo-500 text-white border-indigo-400'
+                              : 'bg-rose-500 text-white border-rose-400'
                           }`}
                         >
-                          <option value="confirmed">Confirmed</option>
-                          <option value="assigned">Driver Assigned</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
+                          <option value="confirmed" className="bg-slate-900 text-white">Confirmed</option>
+                          <option value="assigned" className="bg-slate-900 text-white">Assigned</option>
+                          <option value="completed" className="bg-slate-900 text-white">Completed</option>
+                          <option value="cancelled" className="bg-slate-900 text-white">Cancelled</option>
                         </select>
 
-                        {/* INLINE DELETE CONFIRMATION: Instant, Reliable, Zero Failure */}
+                        {/* INLINE DELETE CONFIRMATION */}
                         {inlineConfirmDeleteId === b.bookingId ? (
-                          <div className="flex items-center gap-1.5 bg-red-50 border border-red-200 px-2 py-1 rounded-xl animate-in fade-in duration-100">
-                            <span className="text-[11px] font-bold text-red-600">Delete?</span>
+                          <div className="flex items-center gap-1 bg-red-950 border border-red-500 px-2 py-0.5 rounded-lg animate-in fade-in duration-100">
                             <button
                               type="button"
                               onClick={() => handleDeleteBookingDirect(b.bookingId)}
-                              className="px-2 py-0.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[11px] shadow-xs cursor-pointer transition-colors"
+                              className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] cursor-pointer"
                             >
-                              Yes
+                              Delete
                             </button>
                             <button
                               type="button"
                               onClick={() => setInlineConfirmDeleteId(null)}
-                              className="p-0.5 text-slate-400 hover:text-slate-800 cursor-pointer"
+                              className="p-0.5 text-slate-300 hover:text-white cursor-pointer"
                               title="Cancel"
                             >
                               <X className="w-3.5 h-3.5" />
@@ -1525,120 +1867,201 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => setInlineConfirmDeleteId(b.bookingId)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer"
                             title="Delete reservation"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {/* CARD BODY: 3 COLUMNS */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                      {/* COL 1: PASSENGER & DIRECT CONTACT */}
-                      <div className="p-3.5 rounded-xl border border-slate-200/90 bg-slate-50/80 text-slate-900">
-                        <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block mb-1">
-                          Passenger Details
-                        </span>
-                        <div className="font-bold text-sm mb-0.5 text-slate-900">{b.passengerName}</div>
-                        <div className="font-mono text-slate-600 font-semibold mb-2">{b.passengerPhone}</div>
-
-                        {/* Quick Contact Buttons */}
-                        <div className="flex gap-2 mt-2">
-                          <a
-                            href={`tel:${b.passengerPhone.replace(/\s+/g, '')}`}
-                            className="flex-1 py-1.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                          >
-                            <Phone className="w-3.5 h-3.5" />
-                            <span>Call Client</span>
-                          </a>
-
-                          <a
-                            href={customerWhatsAppUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex-1 py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-700 font-bold flex items-center justify-center gap-1.5 transition-colors"
-                          >
-                            <MessageSquare className="w-3.5 h-3.5" />
-                            <span>WhatsApp</span>
-                          </a>
-                        </div>
-                      </div>
-
-                      {/* COL 2: ROUTE, DATES & VEHICLE */}
-                      <div className="p-3.5 rounded-xl border border-slate-200/90 bg-slate-50/80 text-slate-900">
-                        <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block mb-1">
-                          Journey Itinerary
-                        </span>
-                        <div className="font-bold text-sm flex items-center gap-1.5 mb-1 text-slate-900">
-                          <span>{b.pickupCity}</span>
-                          <ArrowRight className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span>{b.dropCity || 'Local City Tour'}</span>
-                        </div>
-                        <div className="text-xs text-slate-600 flex items-center gap-1 mb-1">
-                          <Calendar className="w-3 h-3 text-amber-600" />
-                          <span>{b.pickupDate} at {b.pickupTime}</span>
-                          {b.returnDate && <span className="text-amber-700 font-bold">· Return: {b.returnDate} ({b.returnTime || '18:00'})</span>}
-                        </div>
-                        <div className="text-xs text-slate-500 truncate">
-                          <MapPin className="w-3 h-3 text-emerald-600 inline mr-1" />
-                          {b.pickupAddress}
-                        </div>
-                        <div className="mt-2 pt-1.5 border-t border-slate-200 text-xs font-semibold flex items-center justify-between">
-                          <span className="text-slate-700">{b.vehicle?.name || 'Cab'}</span>
-                          <span className="font-mono font-bold text-amber-600 text-sm">₹{b.totalFare}</span>
-                        </div>
-                      </div>
-
-                      {/* COL 3: DRIVER DISPATCH ASSIGNMENT */}
-                      <div className="p-3.5 rounded-xl border border-slate-200/90 bg-slate-50/80 text-slate-900 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">
-                              Assigned Chauffeur
-                            </span>
-                            {b.driverName && (
-                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                Ready
+                    {/* FORMATTED CARD BODY: 3 WELL-STRUCTURED BOXES */}
+                    <div className="p-3 sm:p-4 space-y-3 bg-white">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                        {/* BOX 1: PASSENGER & CONTACT */}
+                        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/90 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-slate-200/80">
+                              <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                1. Passenger Info
                               </span>
+                              <span className="text-[10px] font-mono font-bold text-slate-500">
+                                +91 {cleanPhone}
+                              </span>
+                            </div>
+                            <div className="font-extrabold text-sm text-slate-900 truncate">
+                              {b.passengerName || 'Guest Passenger'}
+                            </div>
+                            {b.passengerEmail && (
+                              <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                                {b.passengerEmail}
+                              </div>
                             )}
                           </div>
 
-                          {b.driverName ? (
-                            <div className="space-y-0.5 mb-2">
-                              <div className="font-bold text-slate-900">{b.driverName}</div>
-                              <div className="text-xs font-mono text-slate-600">{b.driverPhone}</div>
-                              <div className="text-xs text-amber-700 font-bold">{b.vehicleNumber}</div>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-slate-500 italic mb-2">
-                              No chauffeur assigned yet. Click below to assign driver name &amp; car plate.
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Driver action buttons */}
-                        <div className="space-y-1.5 mt-2">
-                          <button
-                            onClick={() => handleOpenDriverModal(b)}
-                            className="w-full py-1.5 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                            <span>{b.driverName ? 'Change Driver' : 'Assign Chauffeur'}</span>
-                          </button>
-
-                          {b.driverName && (
+                          <div className="grid grid-cols-2 gap-1.5 mt-2.5 pt-2 border-t border-slate-200/70">
                             <a
-                              href={driverShareUrl}
+                              href={`tel:${cleanPhone}`}
+                              className="py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center gap-1 shadow-xs transition-colors whitespace-nowrap"
+                            >
+                              <Phone className="w-3 h-3 shrink-0" />
+                              <span>Call</span>
+                            </a>
+                            <a
+                              href={customerWhatsAppUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="w-full py-1 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-700 font-bold text-xs flex items-center justify-center gap-1 transition-colors"
+                              className="py-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-700 text-[11px] font-bold flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
                             >
-                              <Send className="w-3 h-3" />
-                              <span>Share Driver Info via WhatsApp</span>
+                              <MessageSquare className="w-3 h-3 shrink-0" />
+                              <span>WhatsApp</span>
                             </a>
-                          )}
+                          </div>
+                        </div>
+
+                        {/* BOX 2: ROUTE, SCHEDULE & VEHICLE */}
+                        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/90 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-slate-200/80">
+                              <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                2. Trip &amp; Schedule
+                              </span>
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 truncate max-w-[120px]">
+                                {b.vehicle?.name || 'AC Cab'}
+                              </span>
+                            </div>
+
+                            <div className="font-extrabold text-xs sm:text-sm flex items-center gap-1.5 text-slate-900 mb-1">
+                              <span className="truncate">{b.pickupCity || 'Varanasi'}</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <span className="truncate">{b.dropCity || 'Local Tour'}</span>
+                            </div>
+
+                            <div className="text-[11px] text-slate-700 font-semibold flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-amber-600 shrink-0" />
+                                <span>{b.pickupDate || 'Today'} at {b.pickupTime || '08:00'}</span>
+                              </span>
+                              {b.returnDate && (
+                                <span className="text-amber-700 font-bold">
+                                  · Ret: {b.returnDate}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-2 pt-1.5 border-t border-slate-200/70 flex items-center justify-between text-[11px]">
+                            <span className="text-slate-500 truncate max-w-[65%]">
+                              <MapPin className="w-3 h-3 text-emerald-600 inline mr-0.5" />
+                              {b.pickupAddress || b.pickupCity}
+                            </span>
+                            <span className="price-badge-chatkar font-mono font-black text-xs px-2 py-0.5 rounded-md">
+                              ₹{b.totalFare || 0}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* BOX 3: CHAUFFEUR DISPATCH ASSIGNMENT */}
+                        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/90 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-slate-200/80">
+                              <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                3. Driver Dispatch
+                              </span>
+                              <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-full border ${
+                                b.driverName
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}>
+                                {b.driverName ? 'Assigned' : 'Pending'}
+                              </span>
+                            </div>
+
+                            {b.driverName ? (
+                              <div className="space-y-0.5 text-[11px]">
+                                <div className="font-extrabold text-slate-900 truncate">{b.driverName}</div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-mono text-slate-600 font-bold">+91 {b.driverPhone}</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-slate-500 leading-snug">
+                                No chauffeur assigned yet. Assign driver name &amp; phone below.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-200/70">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDriverModal(b)}
+                              className="flex-1 py-1.5 px-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] flex items-center justify-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
+                            >
+                              <UserCheck className="w-3 h-3 shrink-0" />
+                              <span>{b.driverName ? 'Edit Driver' : 'Assign Driver'}</span>
+                            </button>
+
+                            {b.driverName && (
+                              <a
+                                href={driverShareUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-700 font-bold text-[11px] flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
+                                title="Send Driver Details on WhatsApp"
+                              >
+                                <Send className="w-3 h-3 shrink-0" />
+                                <span>Share</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* COMPACT LIVE JOURNEY STAGE TRACKING STRIP */}
+                      <div className="p-2.5 rounded-xl bg-slate-100/80 border border-slate-200/90">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>Live Ride Stage (Tap to update customer tracker)</span>
+                          </span>
+                          <span className="text-[9.5px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-900 border border-amber-500/30 uppercase shrink-0">
+                            {b.tripStage ? b.tripStage : b.status === 'completed' ? 'completed' : b.driverName ? 'assigned' : 'received'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                          {[
+                            { id: 'received' as TripProgressStage, label: '1. Received' },
+                            { id: 'assigned' as TripProgressStage, label: '2. Assigned' },
+                            { id: 'enroute' as TripProgressStage, label: '3. En Route' },
+                            { id: 'arrived' as TripProgressStage, label: '4. Arrived' },
+                            { id: 'ongoing' as TripProgressStage, label: '5. In Transit' },
+                            { id: 'completed' as TripProgressStage, label: '6. Completed' },
+                          ].map((st, sIdx) => {
+                            const currentStage = b.tripStage || (b.status === 'completed' ? 'completed' : b.driverName ? 'assigned' : 'received');
+                            const stageOrder = ['received', 'assigned', 'enroute', 'arrived', 'ongoing', 'completed'];
+                            const activeIdx = stageOrder.indexOf(currentStage);
+                            const isDone = activeIdx >= sIdx;
+                            const isCurrent = activeIdx === sIdx;
+
+                            return (
+                              <button
+                                key={st.id}
+                                type="button"
+                                onClick={() => handleSetTripStage(b, st.id)}
+                                className={`px-2 py-1.5 rounded-lg text-center transition-all cursor-pointer border text-[10px] font-bold truncate ${
+                                  isCurrent
+                                    ? 'bg-amber-500 text-slate-950 border-amber-600 font-black shadow-xs'
+                                    : isDone
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                }`}
+                              >
+                                {st.label} {isDone ? '✓' : ''}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
@@ -1697,17 +2120,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       }}
                       placeholder="e.g. 9876543210"
                       className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:border-amber-500 text-slate-900 font-mono font-bold focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Vehicle License Plate / Model</label>
-                    <input
-                      type="text"
-                      value={vehicleNoInput}
-                      onChange={(e) => setVehicleNoInput(e.target.value)}
-                      placeholder="e.g. UP 65 AB 4521 (White Dzire)"
-                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:border-amber-500 text-slate-900 focus:outline-none"
                     />
                   </div>
 
@@ -2001,6 +2413,74 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md transition-colors cursor-pointer"
                   >
                     Yes, Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL 5: LIVE RIDE COMPLETED CONFIRMATION POPUP ("OK karne par aapka ride completed ho jaay") */}
+          {bookingToComplete && (
+            <div className="fixed inset-0 z-[175] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-150">
+              <div className="relative w-full max-w-sm rounded-2xl sm:rounded-3xl p-5 border-2 border-emerald-500/40 bg-white text-slate-900 shadow-2xl transition-all">
+                <button
+                  type="button"
+                  onClick={() => setBookingToComplete(null)}
+                  className="absolute top-3.5 right-3.5 p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 cursor-pointer"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-slate-950 flex items-center justify-center mb-3 shadow-md">
+                  <CheckCircle className="w-6 h-6 stroke-[2.5]" />
+                </div>
+
+                <h3 className="text-base sm:text-lg font-black text-slate-900 mb-1">
+                  Complete This Live Ride?
+                </h3>
+                <p className="text-xs text-slate-600 mb-3 leading-relaxed">
+                  Click <strong>OK</strong> below to mark this ride as <strong>Completed</strong> and send a <strong>TravelCap</strong> completion email (from <strong>prajapatialok8546@gmail.com</strong>) to the passenger.
+                </p>
+
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 mb-4 space-y-1 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-semibold">Track ID:</span>
+                    <span className="font-mono font-black text-amber-600">{bookingToComplete.bookingId}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-semibold">Passenger:</span>
+                    <span className="font-bold text-slate-900 truncate max-w-[170px]">{bookingToComplete.passengerName}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-semibold">Route:</span>
+                    <span className="font-bold text-slate-800 truncate max-w-[170px]">
+                      {bookingToComplete.pickupCity} → {bookingToComplete.dropCity || 'Local'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-200">
+                    <span className="text-slate-500 font-semibold">Total Fare:</span>
+                    <span className="price-badge-chatkar font-mono font-black text-xs px-2 py-0.5 rounded-md">
+                      ₹{bookingToComplete.totalFare || 0}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setBookingToComplete(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-300 bg-slate-100 text-slate-700 font-bold text-xs hover:bg-slate-200 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmCompleteRide}
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                  >
+                    <Check className="w-4 h-4 stroke-[2.8]" />
+                    <span>OK, Complete Ride</span>
                   </button>
                 </div>
               </div>

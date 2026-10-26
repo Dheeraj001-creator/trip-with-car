@@ -41,8 +41,8 @@ export const Footer: React.FC<FooterProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-0.5">
-                  <span className={`text-base font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>TripWith</span>
-                  <span className="text-base font-black tracking-tight text-blue-600">Car</span>
+                  <span className={`text-base font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>Travel</span>
+                  <span className="text-base font-black tracking-tight text-blue-600">Cap</span>
                 </div>
                 <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
                   Intercity Chauffeur Services
@@ -51,7 +51,7 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
 
             <p className="text-xs leading-relaxed pr-6">
-              TripWithCar provides scheduled intercity transportation, airport transfers, and spiritual corridor tours throughout Varanasi, Ayodhya, Prayagraj, Lucknow, Delhi NCR, and adjoining interstate routes with transparent tariff pricing.
+              TravelCap provides scheduled intercity transportation, airport transfers, and spiritual corridor tours throughout Varanasi, Ayodhya, Prayagraj, Lucknow, Delhi NCR, and adjoining interstate routes with transparent tariff pricing.
             </p>
 
             <div className={`space-y-2 pt-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
@@ -60,10 +60,17 @@ export const Footer: React.FC<FooterProps> = ({
                 <span>{OFFICE_ADDRESS}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-blue-500 shrink-0" />
-                <a href={`tel:${COMPANY_PHONE.replace(/\s+/g, '')}`} className="hover:text-blue-600 font-bold transition-colors">
-                  {COMPANY_PHONE} (24/7 Helpline)
-                </a>
+                <Phone className="w-4 h-4 text-amber-500 shrink-0" />
+                <div className="flex flex-wrap items-center gap-1.5 font-bold">
+                  <a href={`tel:${COMPANY_PHONE.replace(/\s+/g, '')}`} className="hover:text-amber-500 transition-colors">
+                    {COMPANY_PHONE}
+                  </a>
+                  <span>/</span>
+                  <a href="tel:9517573435" className="hover:text-amber-500 transition-colors">
+                    9517573435
+                  </a>
+                  <span className="text-[10px] text-amber-500 font-semibold">(24/7 Helpline)</span>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-blue-500 shrink-0" />

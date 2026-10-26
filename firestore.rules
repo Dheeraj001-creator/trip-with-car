@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll([
+        'bookingId',
+        'tripType',
+        'pickupCity',
+        'pickupDate',
+        'pickupTime',
+        'totalFare',
+        'passengerName',
+        'passengerPhone',
+        'status',
+        'createdAt'
+      ]) &&
+      data.bookingId is string && data.bookingId.size() >= 3 && data.bookingId.size() <= 64 &&
+      data.tripType is string && data.tripType.size() <= 32 &&
+      data.pickupCity is string && data.pickupCity.size() >= 1 && data.pickupCity.size() <= 120 &&
+      data.pickupDate is string && data.pickupDate.size() >= 1 && data.pickupDate.size() <= 32 &&
+      data.pickupTime is string && data.pickupTime.size() >= 1 && data.pickupTime.size() <= 32 &&
+      data.totalFare is number && data.totalFare >= 0 &&
+      data.passengerName is string && data.passengerName.size() >= 1 && data.passengerName.size() <= 120 &&
+      data.passengerPhone is string && data.passengerPhone.size() >= 1 && data.passengerPhone.size() <= 30 &&
+      data.status is string && data.status in ['confirmed', 'assigned', 'completed', 'cancelled'] &&
+      data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidAdminConfig(data) {
+      return (
+        data.keys().hasAll(['pin']) &&
+        data.pin is string &&
+        data.pin.size() >= 4 &&
+        data.pin.size() <= 12
+      ) || (
+        data.keys().hasAll(['ids']) &&
+        data.ids is list &&
+        data.ids.size() <= 500
+      );
+    }
+
+    // Connection health check path
+    match /test/{docId} {
+      allow get, list: if true;
+    }
+
+    // Customer & Dispatch Bookings Collection
+    match /bookings/{bookingId} {
+      allow get, list: if true;
+      allow create: if isValidId(bookingId) && isValidBooking(incoming());
+      allow update: if isValidId(bookingId) && isValidBooking(incoming());
+      allow delete: if isValidId(bookingId);
+    }
+
+    // Centralized Admin PIN Configuration
+    match /admin_config/{configId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(configId) && isValidAdminConfig(incoming());
+    }
+  }
+}

@@ -33,14 +33,14 @@ export const DriverPartnerModal: React.FC<DriverPartnerModalProps> = ({
   };
 
   const cleanPhone = driverPhone.replace(/\D/g, '');
-  const partnerWhatsAppText = `TRIPWITHCAR FLEET PARTNER APPLICATION
+  const partnerWhatsAppText = `TRAVELCAP FLEET PARTNER APPLICATION
 Name: ${driverName}
 Phone: +91 ${cleanPhone}
 Operating City: ${city}
 Vehicle Model: ${vehicleModel}
 Commercial Registration: ${isCommercialPlate ? 'Yes (Yellow Plate)' : 'No'}
 
-I would like to onboard my commercial vehicle with the TripWithCar fleet network.`;
+I would like to onboard my commercial vehicle with the TravelCap fleet network.`;
 
   const partnerWhatsAppUrl = `https://wa.me/${COMPANY_WHATSAPP}?text=${encodeURIComponent(partnerWhatsAppText)}`;
 

@@ -1,0 +1,171 @@
+{
+  "entities": {
+    "Booking": {
+      "title": "Booking",
+      "description": "A cab reservation created by a customer on mobile or desktop.",
+      "type": "object",
+      "properties": {
+        "bookingId": {
+          "type": "string",
+          "description": "Unique booking reference ID (e.g. TWC-2026-1234)",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "tripType": {
+          "type": "string",
+          "description": "Type of trip",
+          "enum": ["oneway", "roundtrip", "local", "airport"],
+          "maxLength": 32
+        },
+        "pickupCity": {
+          "type": "string",
+          "description": "Origin city",
+          "maxLength": 120
+        },
+        "dropCity": {
+          "type": "string",
+          "description": "Destination city",
+          "maxLength": 120
+        },
+        "pickupAddress": {
+          "type": "string",
+          "description": "Pickup address details",
+          "maxLength": 300
+        },
+        "dropAddress": {
+          "type": "string",
+          "description": "Drop address details",
+          "maxLength": 300
+        },
+        "pickupDate": {
+          "type": "string",
+          "description": "Pickup date YYYY-MM-DD",
+          "maxLength": 32
+        },
+        "pickupTime": {
+          "type": "string",
+          "description": "Pickup time HH:mm",
+          "maxLength": 32
+        },
+        "returnDate": {
+          "type": "string",
+          "description": "Optional return date",
+          "maxLength": 32
+        },
+        "returnTime": {
+          "type": "string",
+          "description": "Optional return time",
+          "maxLength": 32
+        },
+        "estimatedDistanceKm": {
+          "type": "number",
+          "description": "Estimated distance in km"
+        },
+        "baseFare": {
+          "type": "number",
+          "description": "Base fare in INR"
+        },
+        "driverAllowance": {
+          "type": "number",
+          "description": "Driver allowance in INR"
+        },
+        "tollEstimate": {
+          "type": "number",
+          "description": "Toll estimate in INR"
+        },
+        "gstAmount": {
+          "type": "number",
+          "description": "GST amount in INR"
+        },
+        "discountAmount": {
+          "type": "number",
+          "description": "Discount amount in INR"
+        },
+        "totalFare": {
+          "type": "number",
+          "description": "Total payable fare in INR"
+        },
+        "passengerName": {
+          "type": "string",
+          "description": "Customer full name",
+          "maxLength": 120
+        },
+        "passengerPhone": {
+          "type": "string",
+          "description": "Customer 10-digit mobile number",
+          "maxLength": 20
+        },
+        "passengerEmail": {
+          "type": "string",
+          "description": "Customer email address",
+          "maxLength": 150
+        },
+        "passengerCount": {
+          "type": "number",
+          "description": "Number of passengers"
+        },
+        "luggageCount": {
+          "type": "number",
+          "description": "Number of luggage bags"
+        },
+        "paymentPreference": {
+          "type": "string",
+          "description": "Preferred payment mode",
+          "maxLength": 50
+        },
+        "status": {
+          "type": "string",
+          "description": "Current reservation status",
+          "enum": ["confirmed", "assigned", "completed", "cancelled"],
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO creation timestamp",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "bookingId",
+        "tripType",
+        "pickupCity",
+        "pickupDate",
+        "pickupTime",
+        "totalFare",
+        "passengerName",
+        "passengerPhone",
+        "status",
+        "createdAt"
+      ]
+    },
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Centralized Admin PIN configuration across Mobile and PC.",
+      "type": "object",
+      "properties": {
+        "pin": {
+          "type": "string",
+          "description": "4-6 digit Admin PIN",
+          "minLength": 4,
+          "maxLength": 12
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last PIN change",
+          "maxLength": 64
+        }
+      },
+      "required": ["pin"]
+    }
+  },
+  "firestore": {
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "Stores all customer cab bookings across mobile and desktop devices."
+    },
+    "/admin_config/{configId}": {
+      "schema": { "$ref": "#/entities/AdminConfig" },
+      "description": "Stores shared dispatch settings such as the Admin PIN."
+    }
+  }
+}

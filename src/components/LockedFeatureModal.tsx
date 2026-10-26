@@ -40,7 +40,7 @@ export const LockedFeatureModal: React.FC<LockedFeatureModalProps> = ({
   const finalDescription = description || defaultDescription;
 
   const whatsappMessage = encodeURIComponent(
-    `Hello TripWithCar, I am interested in "${serviceName}". Please share details with me.`
+    `Hello TravelCap, I am interested in "${serviceName}". Please share details with me.`
   );
   const whatsappUrl = `https://wa.me/91${COMPANY_WHATSAPP.replace(/\D/g, '')}?text=${whatsappMessage}`;
 

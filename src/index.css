@@ -12,10 +12,14 @@
     text-rendering: geometricPrecision;
   }
 
-  html {
+  html, body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     scroll-behavior: smooth;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    overflow-x: hidden;
+    overflow-y: auto !important;
+    height: auto;
+    min-height: 100%;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -58,76 +62,123 @@
    - Radiant ambient glow and tactile hover lift
    ======================================================== */
 .btn-gold {
-  background: linear-gradient(135deg, #D97706 0%, #F59E0B 30%, #FDE68A 65%, #F59E0B 100%);
-  background-size: 200% 200%;
+  background: linear-gradient(135deg, #F59E0B 0%, #FB923C 50%, #D97706 100%);
   color: #020617;
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border: 1px solid rgba(254, 240, 138, 0.85);
-  box-shadow: 0 4px 16px -2px rgba(245, 158, 11, 0.45), inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  letter-spacing: 0.015em;
+  border: 1px solid rgba(253, 224, 71, 0.75);
+  box-shadow: 0 4px 14px -2px rgba(245, 158, 11, 0.45), inset 0 1px 0 0 rgba(255, 255, 255, 0.45);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   overflow: hidden;
   cursor: pointer;
 }
 
 .btn-gold:hover {
-  background-position: right center;
-  transform: none;
-  box-shadow: 0 6px 20px -2px rgba(245, 158, 11, 0.55), inset 0 1px 2px 0 rgba(255, 255, 255, 0.8);
+  filter: brightness(1.06);
+  box-shadow: 0 6px 20px -2px rgba(245, 158, 11, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.65);
   color: #000000;
   border-color: #FEF08A;
 }
 
 .btn-gold:active {
-  transform: none;
+  filter: brightness(0.96);
   box-shadow: 0 2px 8px 0 rgba(245, 158, 11, 0.35);
 }
 
-/* Specialized Top-Tier Font Styling for "Select" button - Compact & Fitted */
-.btn-select-book {
-  background: linear-gradient(135deg, #D97706 0%, #F59E0B 30%, #FDE68A 65%, #F59E0B 100%);
-  background-size: 200% 200%;
-  color: #020617;
-  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+/* Vibrant "Chatkar" Payment / Fare Badge for Maximum Visibility */
+.price-badge-chatkar {
+  background: linear-gradient(135deg, #059669 0%, #10B981 55%, #047857 100%);
+  color: #FFFFFF !important;
+  font-family: 'Outfit', 'Plus Jakarta Sans', monospace;
   font-weight: 900;
+  letter-spacing: 0.02em;
+  border: 1.5px solid #6EE7B7;
+  box-shadow: 0 3px 12px -1px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Specialized Top-Tier Styling for "Book Cab" button - Royal Electric Blue */
+.btn-select-book {
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 50%, #1E3A8A 100%);
+  color: #FFFFFF !important;
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-weight: 800;
   font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  border: 1px solid rgba(254, 240, 138, 0.9);
-  box-shadow: 0 2px 10px -2px rgba(245, 158, 11, 0.42), inset 0 1px 1px 0 rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(147, 197, 253, 0.75);
+  box-shadow: 0 4px 14px -2px rgba(37, 99, 235, 0.55), inset 0 1px 0 0 rgba(255, 255, 255, 0.35);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
   padding: 0.45rem 0.95rem;
-  border-radius: 0.65rem;
+  border-radius: 0.75rem;
   cursor: pointer;
   white-space: nowrap;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
 }
 
 .btn-select-book:hover {
-  background-position: right center;
-  transform: none;
-  box-shadow: 0 6px 18px -2px rgba(245, 158, 11, 0.55), inset 0 1px 2px 0 rgba(255, 255, 255, 0.9);
-  color: #000000;
-  border-color: #FEF08A;
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 50%, #1D4ED8 100%);
+  box-shadow: 0 6px 20px -2px rgba(37, 99, 235, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.5);
+  color: #FFFFFF !important;
+  border-color: #BFDBFE;
+  transform: translateY(-1px);
 }
 
 .btn-select-book:active {
-  transform: none;
+  transform: translateY(0);
+  filter: brightness(0.96);
 }
 
-/* Segmented Tab Active - Rich Royal Gold without size jumps or uppercase distortion */
+/* Segmented Tab Active - Rich Royal Gold */
 .tab-gold-active {
-  background: linear-gradient(135deg, #D97706 0%, #F59E0B 35%, #FBBF24 70%, #F59E0B 100%);
+  background: linear-gradient(135deg, #F59E0B 0%, #FB923C 50%, #D97706 100%);
   color: #020617;
-  font-weight: 700;
-  border: 1px solid rgba(254, 240, 138, 0.95);
-  box-shadow: 0 2px 8px -1px rgba(245, 158, 11, 0.45);
+  font-weight: 800;
+  border: 1px solid rgba(253, 224, 71, 0.9);
+  box-shadow: 0 3px 10px -1px rgba(245, 158, 11, 0.45);
+}
+
+/* Segmented Tab Active - Electric Royal Blue (For One Way & Round Trip Toggles) */
+.tab-blue-active {
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 55%, #1E40AF 100%);
+  color: #FFFFFF !important;
+  font-weight: 800;
+  border: 1px solid rgba(96, 165, 250, 0.85);
+  box-shadow: 0 4px 14px -2px rgba(37, 99, 235, 0.55), inset 0 1px 0 0 rgba(255, 255, 255, 0.35);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+/* Primary Electric Royal Blue CTA Button (For Search Cab Button) */
+.btn-blue {
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 50%, #1E3A8A 100%);
+  color: #FFFFFF !important;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.015em;
+  border: 1px solid rgba(147, 197, 253, 0.65);
+  box-shadow: 0 6px 18px -3px rgba(37, 99, 235, 0.55), inset 0 1px 0 0 rgba(255, 255, 255, 0.35);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.btn-blue:hover {
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 50%, #1D4ED8 100%);
+  box-shadow: 0 8px 24px -2px rgba(37, 99, 235, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.5);
+  color: #FFFFFF !important;
+  border-color: #93C5FD;
+  transform: translateY(-1px);
+}
+
+.btn-blue:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
 }
 
 /* Stable View More/Fewer Button - Zero distortion, fixed dimensions */

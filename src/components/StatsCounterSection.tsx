@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Star, UserCheck, MapPin, Sparkles, ShieldCheck } from 'lucide-react';
+import { VEHICLES, REVIEWS, CITIES_LIST, POPULAR_ROUTES } from '../data/cabsData';
+import { getBookingsFromStorage, subscribeToLiveBookings, syncBookingsFromServer } from '../utils/fareCalculator';
+import { getCustomReviews } from './CustomerReviews';
 
 interface StatsCounterSectionProps {
   language?: 'en' | 'hi';
@@ -11,21 +14,53 @@ export const StatsCounterSection: React.FC<StatsCounterSectionProps> = ({
   theme,
 }) => {
   const isLight = theme === 'light';
+  const [bookedCount, setBookedCount] = useState<number>(() => getBookingsFromStorage().length);
+  const [reviewsCount, setReviewsCount] = useState<number>(() => REVIEWS.length + getCustomReviews().length);
+
+  useEffect(() => {
+    // Initial sync from local storage and server
+    setBookedCount(getBookingsFromStorage().length);
+    setReviewsCount(REVIEWS.length + getCustomReviews().length);
+    syncBookingsFromServer()
+      .then((list) => setBookedCount(list.length))
+      .catch(() => {});
+
+    // Real-time Firestore listener
+    const unsubscribe = subscribeToLiveBookings((liveBookings) => {
+      setBookedCount(liveBookings.length);
+    });
+
+    // Listen to local booking and review updates in same window
+    const handleStorageUpdate = () => {
+      setBookedCount(getBookingsFromStorage().length);
+      setReviewsCount(REVIEWS.length + getCustomReviews().length);
+    };
+    window.addEventListener('twc_bookings_updated', handleStorageUpdate);
+    window.addEventListener('twc_reviews_updated', handleStorageUpdate);
+    window.addEventListener('storage', handleStorageUpdate);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('twc_bookings_updated', handleStorageUpdate);
+      window.removeEventListener('twc_reviews_updated', handleStorageUpdate);
+      window.removeEventListener('storage', handleStorageUpdate);
+    };
+  }, []);
 
   const stats = [
     {
       id: 'travelers',
-      value: '0',
-      title: language === 'en' ? 'Travelers Served' : 'कुल यात्रियों ने यात्रा की',
-      subtitle: language === 'en' ? 'Outstation & airport journeys' : 'सुरक्षित और समय पर यात्रा',
+      value: `${bookedCount}`,
+      title: language === 'en' ? 'Travelers Booked' : 'कुल बुकिंग संख्या',
+      subtitle: language === 'en' ? 'Live confirmed cab bookings' : 'सत्यापित लाइव कैब बुकिंग',
       icon: Users,
-      badge: language === 'en' ? 'Verified Trips' : 'सत्यापित यात्राएं',
+      badge: language === 'en' ? 'Live Bookings' : 'लाइव बुकिंग',
       accentColor: 'text-amber-500',
       bgColor: 'bg-amber-500/10 border-amber-500/25',
     },
     {
       id: 'reviews',
-      value: '0',
+      value: `${reviewsCount}`,
       title: language === 'en' ? 'Customer Reviews' : 'समीक्षाएं एवं रेटिंग्स',
       subtitle: language === 'en' ? 'Genuine rider feedback' : 'ग्राहकों के प्रत्यक्ष अनुभव',
       icon: Star,
@@ -35,19 +70,19 @@ export const StatsCounterSection: React.FC<StatsCounterSectionProps> = ({
     },
     {
       id: 'drivers',
-      value: '6',
-      title: language === 'en' ? 'Active Drivers' : 'सक्रिय कैब ड्राइवर्स',
-      subtitle: language === 'en' ? 'Yellow-plate vetted chauffeurs' : 'प्रमाणित कमर्शियल सारथी',
+      value: `${VEHICLES.length}`,
+      title: language === 'en' ? 'Active Drivers & Cars' : 'सक्रिय ड्राइवर्स व गाड़ियां',
+      subtitle: language === 'en' ? `${VEHICLES.length} Commercial AC Fleet Vehicles` : 'प्रमाणित कमर्शियल कैब बेड़ा',
       icon: UserCheck,
-      badge: language === 'en' ? 'On-Duty' : 'ऑन-ड्यूटी',
+      badge: language === 'en' ? 'On-Duty Fleet' : 'ऑन-ड्यूटी',
       accentColor: 'text-emerald-500',
       bgColor: 'bg-emerald-500/10 border-emerald-500/25',
     },
     {
       id: 'cities',
-      value: '0',
+      value: `${CITIES_LIST.length}`,
       title: language === 'en' ? 'Routes & Cities' : 'रूट्स एवं जुड़े शहर',
-      subtitle: language === 'en' ? 'UP & Pan-India networks' : 'उत्तर प्रदेश व अंतरराज्यीय नेटवर्क',
+      subtitle: language === 'en' ? `${CITIES_LIST.length} Cities & ${POPULAR_ROUTES.length} Major Corridors` : 'उत्तर प्रदेश व अंतरराज्यीय नेटवर्क',
       icon: MapPin,
       badge: language === 'en' ? 'Connected' : 'कनेक्टेड',
       accentColor: 'text-blue-500',
@@ -71,8 +106,8 @@ export const StatsCounterSection: React.FC<StatsCounterSectionProps> = ({
           </h2>
           <p className={`text-xs sm:text-sm mt-1 max-w-xl ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
             {language === 'en'
-              ? 'Transparent live track record of completed rides, verified reviews, and registered commercial chauffeurs.'
-              : 'यात्रियों की संख्या, ग्राहकों की समीक्षाएं एवं सक्रिय ड्राइवर्स का पारदर्शी लाइव रिकॉर्ड।'}
+              ? 'Transparent live track record of booked rides, verified customer reviews, active fleet cars, and connected cities.'
+              : 'यात्रियों की लाइव बुकिंग, ग्राहकों की समीक्षाएं, गाड़ियों का बेड़ा एवं जुड़े शहरों का पारदर्शी रिकॉर्ड।'}
           </p>
         </div>
 
@@ -80,7 +115,7 @@ export const StatsCounterSection: React.FC<StatsCounterSectionProps> = ({
           isLight ? 'bg-white text-slate-800 border-slate-200' : 'bg-[#0B1120] text-slate-300 border-slate-800'
         }`}>
           <ShieldCheck className="w-4 h-4 text-emerald-500" />
-          <span>100% Real-Time Data</span>
+          <span>100% Real-Time Dynamic Data</span>
         </div>
       </div>
 
